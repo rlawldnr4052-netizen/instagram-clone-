@@ -11,7 +11,9 @@ import 'package:instagram_clone/pages/comments_page.dart';
 import 'package:instagram_clone/pages/search_page.dart';
 import 'package:instagram_clone/pages/profile_setup_page.dart';
 import 'package:instagram_clone/pages/profile_page.dart';
-import 'package:instagram_clone/pages/chat_page.dart'; // Import ChatPage
+import 'package:instagram_clone/pages/chat_page.dart';
+import 'package:instagram_clone/pages/direct_messages_page.dart'; // Import
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -78,6 +80,10 @@ final _router = GoRouter(
         final userId = state.pathParameters['userId']!;
         return ChatPage(otherUserId: userId);
       },
+    ),
+    GoRoute(
+      path: '/direct_messages',
+      builder: (context, state) => const DirectMessagesPage(),
     ),
   ],
   redirect: (context, state) async {

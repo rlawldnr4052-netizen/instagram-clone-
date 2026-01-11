@@ -90435,7 +90435,7 @@ A.as3.prototype={
 $0(){},
 $S:0}
 A.as4.prototype={
-$0(){return A.ql(this.a,"/search",t.X)},
+$0(){return A.ql(this.a,"/direct_messages",t.X)},
 $S:0}
 A.as5.prototype={
 $2(a,b){var s,r,q=null
