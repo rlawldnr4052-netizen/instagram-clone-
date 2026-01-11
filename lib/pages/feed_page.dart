@@ -36,8 +36,11 @@ class _FeedPageState extends State<FeedPage> {
             onPressed: () {},
           ),
           IconButton(
-            icon: const Icon(Icons.chat_bubble_outline),
-            onPressed: () => context.go('/direct'),
+            icon: const Icon(Icons.chat_bubble_outline, color: Colors.red), // DEBUG: RED ICON
+            onPressed: () {
+              debugPrint('DM Icon Pressed - Navigating to /direct');
+              context.goNamed('direct');
+            },
           ),
         ],
       ),

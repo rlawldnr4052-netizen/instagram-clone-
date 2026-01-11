@@ -42,7 +42,14 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/feed',
+      name: 'feed',
       builder: (context, state) => const MainPage(),
+    ),
+// ...
+    GoRoute(
+      path: '/direct',
+      name: 'direct',
+      builder: (context, state) => const DirectMessagesPage(),
     ),
     GoRoute(
       path: '/create_post',
