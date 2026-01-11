@@ -3,6 +3,7 @@ class Message {
   final String senderId;
   final String receiverId;
   final String content;
+  final String? imageUrl;
   final DateTime createdAt;
   final bool isMine; // Helper to distinguish my messages
 
@@ -11,6 +12,7 @@ class Message {
     required this.senderId,
     required this.receiverId,
     required this.content,
+    this.imageUrl,
     required this.createdAt,
     required this.isMine,
   });
@@ -20,7 +22,8 @@ class Message {
       id: map['id'],
       senderId: map['sender_id'],
       receiverId: map['receiver_id'],
-      content: map['content'],
+      content: map['content'] ?? '',
+      imageUrl: map['image_url'],
       createdAt: DateTime.parse(map['created_at']),
       isMine: map['sender_id'] == myUserId,
     );

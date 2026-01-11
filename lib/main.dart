@@ -11,6 +11,7 @@ import 'package:instagram_clone/pages/comments_page.dart';
 import 'package:instagram_clone/pages/search_page.dart';
 import 'package:instagram_clone/pages/profile_setup_page.dart';
 import 'package:instagram_clone/pages/profile_page.dart';
+import 'package:instagram_clone/pages/chat_page.dart'; // Import ChatPage
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +64,13 @@ final _router = GoRouter(
     GoRoute(
       path: '/profile',
       builder: (context, state) => const ProfilePage(),
+    ),
+    GoRoute(
+      path: '/chat/:userId',
+      builder: (context, state) {
+        final userId = state.pathParameters['userId']!;
+        return ChatPage(otherUserId: userId);
+      },
     ),
   ],
   redirect: (context, state) async {

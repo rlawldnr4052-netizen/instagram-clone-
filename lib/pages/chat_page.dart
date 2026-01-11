@@ -1,7 +1,11 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:instagram_clone/main.dart';
 import 'package:instagram_clone/models/message.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 class ChatPage extends StatefulWidget {
   final String otherUserId;
@@ -14,29 +18,98 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final _messageController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   late final Stream<List<Message>> _messagesStream;
+  String? _otherUsername;
+  String? _otherAvatarUrl;
+  bool _isUploading = false;
 
   @override
   void initState() {
     super.initState();
+    _fetchOtherUserProfile();
+    _setupMessageStream();
+  }
+
+  Future<void> _fetchOtherUserProfile() async {
+    try {
+      final data = await supabase
+          .from('profiles')
+          .select('username, avatar_url')
+          .eq('id', widget.otherUserId)
+          .single();
+      if (mounted) {
+        setState(() {
+          _otherUsername = data['username'];
+          _otherAvatarUrl = data['avatar_url'];
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching user: $e');
+    }
+  }
+
+  void _setupMessageStream() {
     final myUserId = supabase.auth.currentUser!.id;
-    
-    // Supabase Stream
-    // We fetch all messages and filter client-side for this conversation
-    // because standard stream() filters are limited for OR conditions.
-    // RLS ensures we only get messages relevant to us.
     _messagesStream = supabase
         .from('messages')
         .stream(primaryKey: ['id'])
-        .order('created_at', ascending: true) // Ensure correct order
+        .order('created_at', ascending: true)
         .map((maps) {
           final messages = maps.map((map) => Message.fromMap(map, myUserId)).toList();
-          // Filter only messages between me and the other user
-          return messages.where((m) => 
+          return messages.where((m) =>
             (m.senderId == myUserId && m.receiverId == widget.otherUserId) ||
             (m.senderId == widget.otherUserId && m.receiverId == myUserId)
           ).toList();
         });
+  }
+
+  // Scroll to bottom when new messages arrive
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent + 100, // Add buffer
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  Future<void> _pickAndSendImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile == null) return;
+
+    setState(() => _isUploading = true);
+
+    try {
+      final bytes = await pickedFile.readAsBytes();
+      final myUserId = supabase.auth.currentUser!.id;
+      final fileName = 'chat_${const Uuid().v4()}.jpg';
+      final path = 'chat_images/$fileName';
+
+      // Upload
+      await supabase.storage.from('chat_images').uploadBinary(
+            path,
+            bytes,
+            fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
+          );
+      final imageUrl = supabase.storage.from('chat_images').getPublicUrl(path);
+
+      // Send Message with Image
+      await supabase.from('messages').insert({
+        'sender_id': myUserId,
+        'receiver_id': widget.otherUserId,
+        'content': '', // No text content
+        'image_url': imageUrl,
+      });
+
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading: $e')));
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -51,39 +124,52 @@ class _ChatPageState extends State<ChatPage> {
         'sender_id': myUserId,
         'receiver_id': widget.otherUserId,
         'content': text,
+        'image_url': null,
       });
+      _scrollToBottom();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sending message: $e')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Chat')),
+      appBar: AppBar(
+        title: Row(
+          children: [
+            CircleAvatar(
+              radius: 16,
+              backgroundImage: _otherAvatarUrl != null ? NetworkImage(_otherAvatarUrl!) : null,
+              child: _otherAvatarUrl == null ? const Icon(Icons.person, size: 16) : null,
+            ),
+            const SizedBox(width: 10),
+            Text(_otherUsername ?? 'Chat', style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 16)),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           Expanded(
             child: StreamBuilder<List<Message>>(
               stream: _messagesStream,
               builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  // Hacky scroll to bottom on initial load
+                  WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+                }
+
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const Center(child: CircularProgressIndicator(color: Colors.white));
                 }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                final messages = snapshot.data ?? [];
                 
+                final messages = snapshot.data ?? [];
                 if (messages.isEmpty) {
-                  return const Center(child: Text('Start a conversation!'));
+                  return const Center(child: Text('Say hello! 👋', style: TextStyle(color: Colors.grey)));
                 }
 
                 return ListView.builder(
+                  controller: _scrollController,
                   padding: const EdgeInsets.all(16),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
@@ -94,39 +180,74 @@ class _ChatPageState extends State<ChatPage> {
               },
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            color: Colors.black,
-            child: SafeArea(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        hintText: 'Type a message...',
-                        hintStyle: const TextStyle(color: Colors.grey),
-                        filled: true,
-                        fillColor: Colors.grey[900],
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.send, color: Colors.blue),
-                    onPressed: _sendMessage,
-                  ),
-                ],
+          
+          if (_isUploading)
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: LinearProgressIndicator(color: Colors.blue),
+            ),
+
+          _buildMessageInput(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageInput() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        border: Border(top: BorderSide(color: Colors.grey[900]!)),
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            // Image Button
+            GestureDetector(
+              onTap: _pickAndSendImage,
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.grey[900],
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.camera_alt, color: Colors.blue, size: 20),
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            
+            // Text Field
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                decoration: InputDecoration(
+                  hintText: 'Message...',
+                  hintStyle: const TextStyle(color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey[900],
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                style: const TextStyle(color: Colors.white),
+                onSubmitted: (_) => _sendMessage(),
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // Send Button (only show if typing? or always)
+            GestureDetector(
+              onTap: _sendMessage,
+              child: const Padding(
+                padding: EdgeInsets.all(8.0),
+                child: Text('Send', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -140,23 +261,46 @@ class _ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMine = message.isMine;
+    final hasImage = message.imageUrl != null;
+
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
         decoration: BoxDecoration(
-          color: isMine ? Colors.blue[700] : Colors.grey[800],
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: isMine ? const Radius.circular(16) : Radius.zero,
-            bottomRight: isMine ? Radius.zero : const Radius.circular(16),
-          ),
+          color: isMine ? const Color(0xFF3797F0) : const Color(0xFF262626), // Messenger Blue : Dark Grey
+          borderRadius: BorderRadius.circular(20),
         ),
-        child: Text(
-          message.content,
-          style: const TextStyle(color: Colors.white),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (hasImage)
+                Image.network(
+                  message.imageUrl!,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      height: 200,
+                      width: 200,
+                      color: Colors.grey[900],
+                      child: const Center(child: CircularProgressIndicator()),
+                    );
+                  },
+                ),
+              if (message.content.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Text(
+                    message.content,
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
