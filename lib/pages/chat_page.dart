@@ -1,3 +1,4 @@
+import 'dart:math'; // Added for random
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -24,12 +25,45 @@ class _ChatPageState extends State<ChatPage> {
   String? _otherUsername;
   String? _otherAvatarUrl;
   bool _isUploading = false;
+  bool _isFirstVisitCheckDone = false;
 
   @override
   void initState() {
     super.initState();
     _fetchOtherUserProfile();
     _setupMessageStream();
+    _checkFirstVisit(); // Trigger the surprise check
+  }
+
+  Future<void> _checkFirstVisit() async {
+    try {
+      final myUserId = supabase.auth.currentUser!.id;
+      
+      // Count messages between these two users
+      final count = await supabase
+          .from('messages')
+          .count()
+          .or('and(sender_id.eq.$myUserId,receiver_id.eq.${widget.otherUserId}),and(sender_id.eq.${widget.otherUserId},receiver_id.eq.$myUserId)');
+      
+      if (count == 0 && mounted) {
+        // SURPRISE!
+        _showHeartRain();
+      }
+    } catch (e) {
+      debugPrint('Error checking first visit: $e');
+    }
+  }
+
+  void _showHeartRain() {
+    final overlayEntry = OverlayEntry(
+      builder: (context) => const HeartRainOverlay(),
+    );
+    Overlay.of(context).insert(overlayEntry);
+
+    // Rain for 4 seconds then cleanup
+    Future.delayed(const Duration(seconds: 4), () {
+      overlayEntry.remove();
+    });
   }
 
   Future<void> _fetchOtherUserProfile() async {
@@ -37,9 +71,6 @@ class _ChatPageState extends State<ChatPage> {
       final myUserId = supabase.auth.currentUser!.id;
 
       // 1. Guard: Check for Mutual Follow
-      // Must have 2 records (I follow them, They follow me)
-      // Or we can query individually if RLS complicates .or()
-      
       final iFollowThem = await supabase
           .from('follows')
           .count()
@@ -340,4 +371,95 @@ class _ChatBubble extends StatelessWidget {
       ),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Heart Rain Animation Widgets
+// ---------------------------------------------------------------------------
+
+class HeartRainOverlay extends StatefulWidget {
+  const HeartRainOverlay({super.key});
+
+  @override
+  State<HeartRainOverlay> createState() => _HeartRainOverlayState();
+}
+
+class _HeartRainOverlayState extends State<HeartRainOverlay> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  final List<RainParticle> _particles = [];
+  final Random _random = Random();
+
+  @override
+  void initState() {
+    super.initState();
+    // Generate many particles for rain effect
+    for (int i = 0; i < 50; i++) {
+        _particles.add(RainParticle(
+            startX: -1.0, // Placeholder
+            delay: _random.nextDouble() * 2, // Staggered start
+            speed: _random.nextDouble() * 200 + 150, // Fast fall
+            size: _random.nextDouble() * 20 + 20, // 20-40 size
+        ));
+    }
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final height = MediaQuery.of(context).size.height;
+
+    // Initialize X positions if not set
+    if (_particles.isNotEmpty && _particles[0].startX == -1.0) {
+       for (var p in _particles) {
+         p.startX = _random.nextDouble() * width;
+       }
+    }
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Stack(
+          children: _particles.map((p) {
+            final double time = (_controller.value * 4) - p.delay; // Global time - delay
+            if (time < 0) return const SizedBox.shrink(); // Not started yet
+
+            final double dropDistance = p.speed * time;
+            final double y = -50 + dropDistance; // Start above screen
+            
+            // Slight wiggle
+            final double x = p.startX + sin(time * 5) * 20;
+
+            if (y > height + 50) return const SizedBox.shrink(); // Valid optimization
+
+            return Positioned(
+              left: x,
+              top: y,
+              child: Text('💖', style: TextStyle(fontSize: p.size, decoration: TextDecoration.none)),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+}
+
+class RainParticle {
+  double startX;
+  final double delay;
+  final double speed;
+  final double size;
+
+  RainParticle({required this.startX, required this.delay, required this.speed, required this.size});
 }
