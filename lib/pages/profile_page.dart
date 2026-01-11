@@ -1,0 +1,226 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:instagram_clone/main.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class ProfilePage extends StatefulWidget {
+  const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  String? _username;
+  String? _avatarUrl;
+  String? _jobTitle;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfile();
+  }
+
+  Future<void> _fetchProfile() async {
+    try {
+      final userId = supabase.auth.currentUser!.id;
+      // Fetch latest profile data, including job_title
+      final data = await supabase
+          .from('profiles')
+          .select('username, avatar_url, job_title')
+          .eq('id', userId)
+          .single();
+
+      if (mounted) {
+        setState(() {
+          _username = data['username'];
+          _avatarUrl = data['avatar_url'];
+          _jobTitle = data['job_title'];
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching profile: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // Dynamic Badge Logic
+  Color _getBadgeColor(String? job) {
+    if (job == null) return Colors.blue; 
+    final lower = job.toLowerCase();
+    if (lower.contains('ai')) return Colors.orange;
+    if (lower.contains('designer')) return Colors.purple;
+    if (lower.contains('model')) return Colors.pink;
+    return Colors.blue; // Default
+  }
+
+  IconData _getBadgeIcon(String? job) {
+    if (job == null) return Icons.verified;
+    final lower = job.toLowerCase();
+    if (lower.contains('ai')) return Icons.auto_awesome;
+    if (lower.contains('designer')) return Icons.palette;
+    if (lower.contains('model')) return Icons.star;
+    return Icons.verified;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator(color: Colors.white)),
+      );
+    }
+
+    // Badge Config
+    final badgeColor = _getBadgeColor(_jobTitle);
+    final badgeIcon = _getBadgeIcon(_jobTitle);
+    final displayJob = _jobTitle ?? 'New Creator';
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // 1. Giant Hero Card (60% Height)
+            Expanded(
+              flex: 6,
+              child: Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(36), // Huge Radius
+                  image: DecorationImage(
+                    image: _avatarUrl != null
+                        ? NetworkImage(_avatarUrl!)
+                        : const NetworkImage('https://via.placeholder.com/400x600/333333/FFFFFF?text=No+Image'),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(36),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.1),
+                        Colors.black.withOpacity(0.9),
+                      ],
+                      stops: const [0.4, 0.6, 1.0],
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Username
+                      Text(
+                        _username ?? 'Unknown',
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 36,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -1.0,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Dynamic Badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: badgeColor.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: badgeColor.withOpacity(0.5)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(badgeIcon, color: badgeColor, size: 16),
+                            const SizedBox(width: 8),
+                            Text(
+                              displayJob,
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // 2. Action Buttons (Stadium Style)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildStadiumButton(
+                      text: 'Message',
+                      backgroundColor: Colors.white,
+                      textColor: Colors.black,
+                      onTap: () {},
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildStadiumButton(
+                      text: 'Follow',
+                      backgroundColor: const Color(0xFF1E1E1E),
+                      textColor: Colors.white,
+                      onTap: () {},
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const Spacer(flex: 1),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStadiumButton({
+    required String text,
+    required Color backgroundColor,
+    required Color textColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 60,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(100), // Stadium
+        ),
+        child: Center(
+          child: Text(
+            text,
+            style: GoogleFonts.inter(
+              color: textColor,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
