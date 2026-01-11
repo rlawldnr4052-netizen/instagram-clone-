@@ -1,16 +1,23 @@
 ---
-description: Automatically force save all changes, commit to git, and push to Vercel.
+description: Automatically force save all changes, build for web, commit, and push to Vercel.
 ---
 
 1. **Force Save Verification**:
-   - (Implicit) Ensure all `write_to_file` or `replace_file_content` operations are completed.
+   - (Implicit) Ensure all changes are saved.
 
-2. **Git Commit & Push**:
-   - Run the following command to stage, commit, and push changes.
+2. **Build Web Release**:
+   - Run the Flutter build command to generate static files.
    // turbo
    ```bash
-   git add . && git commit -m "Auto-save: Integrated updates" && git push
+   flutter build web --release
    ```
 
-3. **Reporting**:
-   - Notify the user that the "Save & Deploy" process has been initiated.
+3. **Git Commit & Push**:
+   - Stage everything (including the new build), commit, and push.
+   // turbo
+   ```bash
+   git add . && git commit -m "Auto-deploy: Built and pushed latest changes" && git push
+   ```
+
+4. **Reporting**:
+   - Notify the user that the process is complete.
