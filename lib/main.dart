@@ -139,6 +139,9 @@ final _router = GoRouter(
       // providing a fallback is tricky.
       // For this user: "Strictly Block".
       if (!isSetupPage) return '/setup-profile'; 
+      // Explicitly allow direct messages
+      if (location.startsWith('/direct')) return null;
+
       return null;
     }
   },
