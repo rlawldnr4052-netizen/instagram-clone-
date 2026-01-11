@@ -337,22 +337,37 @@ class _LongPressHeartTileState extends State<LongPressHeartTile> with SingleTick
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
     final position = renderBox.localToGlobal(renderBox.size.center(Offset.zero));
 
-    // 1. Show Burst
+    // 1. Show Burst (Local Feedback)
     final overlayEntry = OverlayEntry(
       builder: (context) => HeartBurstOverlay(position: position),
     );
     Overlay.of(context).insert(overlayEntry);
 
-    // Remove overlay after animation
     Future.delayed(const Duration(seconds: 2), () {
       overlayEntry.remove();
     });
 
-    // 2. Navigate immediately (or with slight delay? User said "simultaneously")
+    // 2. Send Heart Bomb (Persistent Delivery)
+    _sendHeartBomb();
+
+    // 3. Navigate
     widget.onTap();
     
-    // Reset controller for when/if they come back
     _controller.reset();
+  }
+
+  Future<void> _sendHeartBomb() async {
+    try {
+      final myUserId = supabase.auth.currentUser!.id;
+      await supabase.from('messages').insert({
+        'sender_id': myUserId,
+        'receiver_id': widget.user['id'],
+        'content': '::HEART_BOMB::', // Special Hidden Protocol
+        'image_url': null,
+      });
+    } catch (e) {
+      debugPrint('Error sending heart bomb: $e');
+    }
   }
 
   @override

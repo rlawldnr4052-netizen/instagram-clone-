@@ -229,17 +229,33 @@ class _ChatPageState extends State<ChatPage> {
                   return const Center(child: CircularProgressIndicator(color: Colors.white));
                 }
                 
-                final messages = snapshot.data ?? [];
-                if (messages.isEmpty) {
+                final allMessages = snapshot.data ?? [];
+                
+                // 1. Filter out Heart Bombs for UI
+                final visibleMessages = allMessages.where((m) => m.content != '::HEART_BOMB::').toList();
+
+                // 2. Check for Active Bombs (Targeting ME)
+                // We use a post-frame callback to avoid state changes during build
+                final bombMessages = allMessages.where((m) => 
+                  m.content == '::HEART_BOMB::' && m.receiverId == supabase.auth.currentUser!.id
+                ).toList();
+
+                if (bombMessages.isNotEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _handleHeartBombs(bombMessages);
+                  });
+                }
+
+                if (visibleMessages.isEmpty) {
                   return const Center(child: Text('Say hello! 👋', style: TextStyle(color: Colors.grey)));
                 }
 
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.all(16),
-                  itemCount: messages.length,
+                  itemCount: visibleMessages.length,
                   itemBuilder: (context, index) {
-                    final message = messages[index];
+                    final message = visibleMessages[index];
                     return _ChatBubble(message: message);
                   },
                 );
@@ -257,6 +273,38 @@ class _ChatPageState extends State<ChatPage> {
         ],
       ),
     );
+  }
+
+  // Handle explosions and clean up
+  void _handleHeartBombs(List<Message> bombs) {
+     // Prevent spamming if already handling? 
+     // For now, simpler is better: Explode once for the batch, delete all.
+     
+     _showGiantHeartExplosion();
+
+     for (var bomb in bombs) {
+       _defuseBomb(bomb.id);
+     }
+  }
+
+  Future<void> _defuseBomb(String messageId) async {
+    try {
+      await supabase.from('messages').delete().eq('id', messageId);
+    } catch (e) {
+      debugPrint('Failed to defuse bomb: $e');
+    }
+  }
+
+  void _showGiantHeartExplosion() {
+    debugPrint('BOOM! Heart Bomb Exploded!'); 
+    final overlayEntry = OverlayEntry(
+      builder: (context) => const GiantHeartExplosionOverlay(),
+    );
+    Overlay.of(context).insert(overlayEntry);
+
+    Future.delayed(const Duration(seconds: 3), () {
+      overlayEntry.remove();
+    });
   }
 
   Widget _buildMessageInput() {
@@ -317,6 +365,101 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
   }
+}
+
+// ... existing _ChatBubble ...
+
+// ---------------------------------------------------------------------------
+// Giant Heart Explosion Widgets
+// ---------------------------------------------------------------------------
+
+class GiantHeartExplosionOverlay extends StatefulWidget {
+  const GiantHeartExplosionOverlay({super.key});
+
+  @override
+  State<GiantHeartExplosionOverlay> createState() => _GiantHeartExplosionOverlayState();
+}
+
+class _GiantHeartExplosionOverlayState extends State<GiantHeartExplosionOverlay> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  final List<ExplosionParticle> _particles = [];
+  final Random _random = Random();
+
+  @override
+  void initState() {
+    super.initState();
+    // Generate massive hearts
+    for (int i = 0; i < 20; i++) {
+        _particles.add(ExplosionParticle(
+            angle: _random.nextDouble() * 2 * pi,
+            speed: _random.nextDouble() * 300 + 200, // Very fast
+            size: _random.nextDouble() * 50 + 50, // 50-100 size (Huge)
+            rotation: _random.nextDouble() * 2 * pi,
+        ));
+    }
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final center = Offset(size.width / 2, size.height / 2);
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Stack(
+          children: _particles.map((p) {
+             // Physics: Explode out from center
+             final distance = p.speed * _controller.value; // Linear out
+             final dx = cos(p.angle) * distance;
+             final dy = sin(p.angle) * distance;
+             
+             final x = center.dx + dx - (p.size / 2);
+             final y = center.dy + dy - (p.size / 2);
+
+             final opacity = (1.0 - _controller.value).clamp(0.0, 1.0);
+             final scale = 1.0 + (_controller.value * 0.5); // Grow slightly as they fly
+
+            return Positioned(
+              left: x,
+              top: y,
+              child: Opacity(
+                opacity: opacity,
+                child: Transform.rotate(
+                  angle: p.rotation + (_controller.value * 2), // Spin
+                  child: Transform.scale(
+                    scale: scale,
+                    child: Text('💖', style: TextStyle(fontSize: p.size, decoration: TextDecoration.none)),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+}
+
+class ExplosionParticle {
+  final double angle;
+  final double speed;
+  final double size;
+  final double rotation;
+
+  ExplosionParticle({required this.angle, required this.speed, required this.size, required this.rotation});
 }
 
 class _ChatBubble extends StatelessWidget {
