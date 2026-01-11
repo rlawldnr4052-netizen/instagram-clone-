@@ -83,6 +83,10 @@ class _DirectMessagesPageState extends State<DirectMessagesPage> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.pink),
+          onPressed: () => context.goNamed('feed'),
+        ),
         // title: const Text('Direct Messages v2', style: TextStyle(fontWeight: FontWeight.bold)), // Removed for clean look
         actions: [
           IconButton(icon: const Icon(Icons.edit_square, color: Colors.white), onPressed: () {}),
