@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 import 'package:instagram_clone/main.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  final String? userId;
+  const ProfilePage({super.key, this.userId});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -24,12 +26,13 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _fetchProfile() async {
     try {
-      final userId = supabase.auth.currentUser!.id;
-      // Fetch latest profile data, including job_title
+      // Use passed userId or fallback to current user
+      final targetUserId = widget.userId ?? supabase.auth.currentUser!.id;
+      
       final data = await supabase
           .from('profiles')
           .select('username, avatar_url, job_title')
-          .eq('id', userId)
+          .eq('id', targetUserId)
           .single();
 
       if (mounted) {
@@ -169,12 +172,16 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Row(
                 children: [
                   Expanded(
-                    child: _buildStadiumButton(
-                      text: 'Message',
-                      backgroundColor: Colors.white,
-                      textColor: Colors.black,
-                      onTap: () {},
-                    ),
+                      child: _buildStadiumButton(
+                        text: 'Message',
+                        backgroundColor: Colors.white,
+                        textColor: Colors.black,
+                        onTap: () {
+                          if (widget.userId != null && widget.userId != supabase.auth.currentUser!.id) {
+                            context.push('/chat/${widget.userId}');
+                          }
+                        },
+                      ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(

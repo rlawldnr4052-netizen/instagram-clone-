@@ -152,20 +152,26 @@ class _PostWidgetState extends State<PostWidget> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           child: Row(
             children: [
-              CircleAvatar(
-                backgroundColor: Colors.grey[800],
-                radius: 16,
-                backgroundImage: widget.post.avatarUrl != null
-                    ? NetworkImage(widget.post.avatarUrl!)
-                    : null,
-                child: widget.post.avatarUrl == null
-                    ? const Icon(Icons.person, size: 20, color: Colors.white)
-                    : null,
+              GestureDetector(
+                onTap: () => context.push('/profile/${widget.post.userId}'),
+                child: CircleAvatar(
+                  backgroundColor: Colors.grey[800],
+                  radius: 16,
+                  backgroundImage: widget.post.avatarUrl != null
+                      ? NetworkImage(widget.post.avatarUrl!)
+                      : null,
+                  child: widget.post.avatarUrl == null
+                      ? const Icon(Icons.person, size: 20, color: Colors.white)
+                      : null,
+                ),
               ),
               const SizedBox(width: 8),
-              Text(
-                widget.post.username ?? 'Unknown',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+              GestureDetector(
+                onTap: () => context.push('/profile/${widget.post.userId}'),
+                child: Text(
+                  widget.post.username ?? 'Unknown',
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                ),
               ),
               const Spacer(),
               const Icon(Icons.more_horiz, color: Colors.white),

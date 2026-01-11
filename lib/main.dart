@@ -66,6 +66,13 @@ final _router = GoRouter(
       builder: (context, state) => const ProfilePage(),
     ),
     GoRoute(
+      path: '/profile/:userId',
+      builder: (context, state) {
+        final userId = state.pathParameters['userId']!;
+        return ProfilePage(userId: userId);
+      },
+    ),
+    GoRoute(
       path: '/chat/:userId',
       builder: (context, state) {
         final userId = state.pathParameters['userId']!;
