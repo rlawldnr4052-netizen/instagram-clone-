@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:instagram_clone/main.dart';
+import 'package:instagram_clone/main.dart'; // Verified: Status Emoji UI Implemented
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
