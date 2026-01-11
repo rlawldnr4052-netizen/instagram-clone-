@@ -17,6 +17,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _avatarUrl;
   String? _jobTitle;
   bool _isLoading = true;
+  bool _isFollowing = false; // New state
 
   @override
   void initState() {
@@ -26,8 +27,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _fetchProfile() async {
     try {
+      final myUserId = supabase.auth.currentUser!.id;
       // Use passed userId or fallback to current user
-      final targetUserId = widget.userId ?? supabase.auth.currentUser!.id;
+      final targetUserId = widget.userId ?? myUserId;
       
       final data = await supabase
           .from('profiles')
@@ -35,17 +37,59 @@ class _ProfilePageState extends State<ProfilePage> {
           .eq('id', targetUserId)
           .single();
 
+      // Check if following
+      bool following = false;
+      if (targetUserId != myUserId) {
+        final count = await supabase
+          .from('follows')
+          .count()
+          .eq('follower_id', myUserId)
+          .eq('following_id', targetUserId);
+        following = count > 0;
+      }
+
       if (mounted) {
         setState(() {
           _username = data['username'];
           _avatarUrl = data['avatar_url'];
           _jobTitle = data['job_title'];
+          _isFollowing = following;
           _isLoading = false;
         });
       }
     } catch (e) {
       debugPrint('Error fetching profile: $e');
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _toggleFollow() async {
+    final myUserId = supabase.auth.currentUser!.id;
+    final targetUserId = widget.userId;
+    if (targetUserId == null || targetUserId == myUserId) return;
+
+    setState(() {
+      _isFollowing = !_isFollowing;
+    });
+
+    try {
+      if (_isFollowing) {
+        await supabase.from('follows').insert({
+          'follower_id': myUserId,
+          'following_id': targetUserId,
+        });
+      } else {
+        await supabase.from('follows').delete().match({
+          'follower_id': myUserId,
+          'following_id': targetUserId,
+        });
+      }
+    } catch (e) {
+      // Revert on error
+      if (mounted) {
+         setState(() => _isFollowing = !_isFollowing);
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -81,6 +125,9 @@ class _ProfilePageState extends State<ProfilePage> {
     final badgeColor = _getBadgeColor(_jobTitle);
     final badgeIcon = _getBadgeIcon(_jobTitle);
     final displayJob = _jobTitle ?? 'New Creator';
+    
+    // Check if it's my own profile
+    final isMe = widget.userId == null || widget.userId == supabase.auth.currentUser!.id;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -184,14 +231,24 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildStadiumButton(
-                      text: 'Follow',
-                      backgroundColor: const Color(0xFF1E1E1E),
-                      textColor: Colors.white,
-                      onTap: () {},
+                  if (!isMe)
+                    Expanded(
+                      child: _buildStadiumButton(
+                        text: _isFollowing ? 'Unfollow' : 'Follow',
+                        backgroundColor: _isFollowing ? const Color(0xFF1E1E1E) : Colors.blue,
+                        textColor: Colors.white,
+                        onTap: _toggleFollow,
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: _buildStadiumButton(
+                        text: 'Edit Profile',
+                        backgroundColor: const Color(0xFF1E1E1E),
+                        textColor: Colors.white,
+                        onTap: () => context.push('/setup-profile'),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
