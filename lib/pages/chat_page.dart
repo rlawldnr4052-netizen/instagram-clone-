@@ -37,11 +37,6 @@ class _ChatPageState extends State<ChatPage> {
       final myUserId = supabase.auth.currentUser!.id;
 
       // 1. Guard: Check for Mutual Follow
-      final mutualCheck = await supabase
-          .from('follows')
-          .select()
-          .or('and(follower_id.eq.$myUserId,following_id.eq.${widget.otherUserId}),and(follower_id.eq.${widget.otherUserId},following_id.eq.$myUserId)');
-      
       // Must have 2 records (I follow them, They follow me)
       // Or we can query individually if RLS complicates .or()
       
