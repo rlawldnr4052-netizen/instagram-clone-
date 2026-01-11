@@ -15,7 +15,7 @@ class _FeedPageState extends State<FeedPage> {
   Future<List<Map<String, dynamic>>> _fetchPosts() async {
     final response = await supabase
         .from('posts')
-        .select('*, profiles(username, avatar_url), likes(user_id)')
+        .select('*, profiles(username, avatar_url, status_emoji), likes(user_id)')
         .order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(response);
   }
@@ -154,15 +154,28 @@ class _PostWidgetState extends State<PostWidget> {
             children: [
               GestureDetector(
                 onTap: () => context.push('/profile/${widget.post.userId}'),
-                child: CircleAvatar(
-                  backgroundColor: Colors.grey[800],
-                  radius: 16,
-                  backgroundImage: widget.post.avatarUrl != null
-                      ? NetworkImage(widget.post.avatarUrl!)
-                      : null,
-                  child: widget.post.avatarUrl == null
-                      ? const Icon(Icons.person, size: 20, color: Colors.white)
-                      : null,
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: Colors.grey[800],
+                      radius: 16,
+                      backgroundImage: widget.post.avatarUrl != null
+                          ? NetworkImage(widget.post.avatarUrl!)
+                          : null,
+                      child: widget.post.avatarUrl == null
+                          ? const Icon(Icons.person, size: 20, color: Colors.white)
+                          : null,
+                    ),
+                    if (widget.post.statusEmoji != null)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Text(
+                          widget.post.statusEmoji!,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(width: 8),

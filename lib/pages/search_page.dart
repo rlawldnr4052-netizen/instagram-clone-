@@ -52,7 +52,7 @@ class _SearchPageState extends State<SearchPage> {
       // 4. Fetch Profiles for Mutuals
       final response = await supabase
           .from('profiles')
-          .select()
+          .select('*, status_emoji') // Explicitly ask for status_emoji just in case
           .inFilter('id', mutualIds);
       
       if (mounted) {
@@ -83,14 +83,27 @@ class _SearchPageState extends State<SearchPage> {
               itemBuilder: (context, index) {
                 final user = _users[index];
                 return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.grey[800],
-                    backgroundImage: user['avatar_url'] != null 
-                        ? NetworkImage(user['avatar_url']) 
-                        : null,
-                    child: user['avatar_url'] == null 
-                        ? const Icon(Icons.person, color: Colors.white) 
-                        : null,
+                  leading: Stack(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: Colors.grey[800],
+                        backgroundImage: user['avatar_url'] != null 
+                            ? NetworkImage(user['avatar_url']) 
+                            : null,
+                        child: user['avatar_url'] == null 
+                            ? const Icon(Icons.person, color: Colors.white) 
+                            : null,
+                      ),
+                      if (user['status_emoji'] != null)
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Text(
+                            user['status_emoji'],
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                    ],
                   ),
                   title: Text(
                     user['username'] ?? 'Unknown',

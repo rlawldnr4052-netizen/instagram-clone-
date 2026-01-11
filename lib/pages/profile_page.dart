@@ -16,6 +16,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _username;
   String? _avatarUrl;
   String? _jobTitle;
+  String? _statusEmoji; // New state
   bool _isLoading = true;
   bool _isFollowing = false; // New state
 
@@ -33,7 +34,7 @@ class _ProfilePageState extends State<ProfilePage> {
       
       final data = await supabase
           .from('profiles')
-          .select('username, avatar_url, job_title')
+          .select('username, avatar_url, job_title, status_emoji')
           .eq('id', targetUserId)
           .single();
 
@@ -53,6 +54,7 @@ class _ProfilePageState extends State<ProfilePage> {
           _username = data['username'];
           _avatarUrl = data['avatar_url'];
           _jobTitle = data['job_title'];
+          _statusEmoji = data['status_emoji'];
           _isFollowing = following;
           _isLoading = false;
         });
@@ -90,6 +92,40 @@ class _ProfilePageState extends State<ProfilePage> {
          setState(() => _isFollowing = !_isFollowing);
          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
+    }
+  }
+
+  Future<void> _showEmojiPicker() async {
+    final emoji = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          height: 200,
+          child: Column(
+            children: [
+              const Text('Set Status', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: ['😊', '🔥', '😴', '🍕', '💻', '🏋️'].map((e) {
+                  return GestureDetector(
+                    onTap: () => Navigator.pop(context, e),
+                    child: Text(e, style: const TextStyle(fontSize: 32)),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (emoji != null) {
+      setState(() => _statusEmoji = emoji);
+      final myUserId = supabase.auth.currentUser!.id;
+      await supabase.from('profiles').update({'status_emoji': emoji}).eq('id', myUserId);
     }
   }
 
@@ -169,6 +205,43 @@ class _ProfilePageState extends State<ProfilePage> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Emoji Status (Top Right or near name?) - Let's put it top right of the card
+                      if (isMe)
+                        Align(
+                          alignment: Alignment.topRight,
+                          child: GestureDetector(
+                            onTap: _showEmojiPicker,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.5),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                _statusEmoji ?? '😀',
+                                style: const TextStyle(fontSize: 24),
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (_statusEmoji != null)
+                        Align(
+                          alignment: Alignment.topRight,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              _statusEmoji!,
+                              style: const TextStyle(fontSize: 24),
+                            ),
+                          ),
+                        ),
+
+                      const Spacer(),
+
                       // Username
                       Text(
                         _username ?? 'Unknown',

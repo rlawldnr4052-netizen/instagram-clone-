@@ -6,6 +6,7 @@ class Post {
   final DateTime createdAt;
   final String? username; // Fetched from profiles
   final String? avatarUrl;
+  final String? statusEmoji;
 
   Post({
     required this.id,
@@ -15,6 +16,7 @@ class Post {
     required this.createdAt,
     this.username,
     this.avatarUrl,
+    this.statusEmoji,
   });
 
   factory Post.fromMap(Map<String, dynamic> map) {
@@ -26,6 +28,7 @@ class Post {
       createdAt: DateTime.parse(map['created_at']),
       username: map['profiles'] != null ? map['profiles']['username'] : null,
       avatarUrl: map['profiles'] != null ? map['profiles']['avatar_url'] : null,
+      statusEmoji: map['profiles'] != null ? map['profiles']['status_emoji'] : null,
     );
   }
 }
