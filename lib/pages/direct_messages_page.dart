@@ -82,7 +82,7 @@ class _DirectMessagesPageState extends State<DirectMessagesPage> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('Direct Messages v2', style: TextStyle(fontWeight: FontWeight.bold)),
+        // title: const Text('Direct Messages v2', style: TextStyle(fontWeight: FontWeight.bold)), // Removed for clean look
         actions: [
           IconButton(icon: const Icon(Icons.edit_square, color: Colors.white), onPressed: () {}),
         ],
