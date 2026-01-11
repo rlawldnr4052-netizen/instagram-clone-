@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:math';
 
 final supabase = Supabase.instance.client;
 
@@ -135,7 +136,7 @@ class _DirectMessagesPageState extends State<DirectMessagesPage> {
                   child: Text('Messages', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
 
-                // 4. Vertical Chat List
+                // 4. Vertical Chat List with Long Press Effect
                 Expanded(
                   child: _users.isEmpty
                       ? const Center(child: Text('No messages', style: TextStyle(color: Colors.grey)))
@@ -143,26 +144,8 @@ class _DirectMessagesPageState extends State<DirectMessagesPage> {
                           itemCount: _users.length,
                           itemBuilder: (context, index) {
                             final user = _users[index];
-                            return ListTile(
-                              leading: CircleAvatar(
-                                radius: 24,
-                                backgroundColor: Colors.grey[800],
-                                backgroundImage: user['avatar_url'] != null 
-                                    ? NetworkImage(user['avatar_url']) 
-                                    : null,
-                                child: user['avatar_url'] == null 
-                                    ? const Icon(Icons.person, color: Colors.white) 
-                                    : null,
-                              ),
-                              title: Text(
-                                user['username'] ?? 'Unknown',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                              ),
-                              subtitle: const Text(
-                                'Sent a message', // Placeholder for last message
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                              trailing: const Icon(Icons.camera_alt_outlined, color: Colors.grey),
+                            return LongPressHeartTile(
+                              user: user,
                               onTap: () => context.push('/chat/${user['id']}'),
                             );
                           },
@@ -226,11 +209,7 @@ class _DirectMessagesPageState extends State<DirectMessagesPage> {
 
   // Friend Note Widget (Display only)
   Widget _buildFriendNoteItem(Map<String, dynamic> user) {
-    if (user['status_emoji'] == null) return const SizedBox.shrink(); // Don't show if no note? Or show avatar? Instagram shows avatar.
-    // Actually Instagram notes show avatars even without notes? No, "Notes" section is for notes.
-    // If no emoji, we might skip showing them in the horizontal status list.
-    // Let's hide if no emoji for now to keep it clean, or show just avatar. 
-    // User requested: "Friend's emoji notes".
+    if (user['status_emoji'] == null) return const SizedBox.shrink(); 
     
     return Container(
       margin: const EdgeInsets.only(right: 16),
@@ -310,4 +289,224 @@ class _DirectMessagesPageState extends State<DirectMessagesPage> {
       await supabase.from('profiles').update({'status_emoji': emoji}).eq('id', myUserId);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Custom Widgets for Long Press & Heart Burst
+// ---------------------------------------------------------------------------
+
+class LongPressHeartTile extends StatefulWidget {
+  final Map<String, dynamic> user;
+  final VoidCallback onTap;
+
+  const LongPressHeartTile({
+    super.key,
+    required this.user,
+    required this.onTap,
+  });
+
+  @override
+  State<LongPressHeartTile> createState() => _LongPressHeartTileState();
+}
+
+class _LongPressHeartTileState extends State<LongPressHeartTile> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1), // Long press duration
+    );
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        // Trigger Burst and Navigation!
+        _triggerBurstAndNavigate();
+      }
+    });
+  }
+
+  void _triggerBurstAndNavigate() {
+    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final position = renderBox.localToGlobal(renderBox.size.center(Offset.zero));
+
+    // 1. Show Burst
+    final overlayEntry = OverlayEntry(
+      builder: (context) => HeartBurstOverlay(position: position),
+    );
+    Overlay.of(context).insert(overlayEntry);
+
+    // Remove overlay after animation
+    Future.delayed(const Duration(seconds: 2), () {
+      overlayEntry.remove();
+    });
+
+    // 2. Navigate immediately (or with slight delay? User said "simultaneously")
+    widget.onTap();
+    
+    // Reset controller for when/if they come back
+    _controller.reset();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      onLongPressStart: (_) => _controller.forward(),
+      onLongPressEnd: (_) {
+        if (_controller.status != AnimationStatus.completed) {
+          _controller.reverse();
+        }
+      },
+      child: Stack(
+        children: [
+          // Background Fill Animation
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _scaleAnimation,
+              builder: (context, child) {
+                return FractionallySizedBox(
+                  widthFactor: _scaleAnimation.value,
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    color: Colors.pink.withOpacity(0.3 + (_scaleAnimation.value * 0.4)), // Fade to stronger pink
+                  ),
+                );
+              },
+            ),
+          ),
+          // Content
+          ListTile(
+            leading: CircleAvatar(
+              radius: 24,
+              backgroundColor: Colors.grey[800],
+              backgroundImage: widget.user['avatar_url'] != null 
+                  ? NetworkImage(widget.user['avatar_url']) 
+                  : null,
+              child: widget.user['avatar_url'] == null 
+                  ? const Icon(Icons.person, color: Colors.white) 
+                  : null,
+            ),
+            title: Text(
+              widget.user['username'] ?? 'Unknown',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+            ),
+            subtitle: const Text(
+              'Sent a message',
+              style: TextStyle(color: Colors.grey),
+            ),
+            trailing: const Icon(Icons.camera_alt_outlined, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class HeartBurstOverlay extends StatefulWidget {
+  final Offset position;
+
+  const HeartBurstOverlay({super.key, required this.position});
+
+  @override
+  State<HeartBurstOverlay> createState() => _HeartBurstOverlayState();
+}
+
+class _HeartBurstOverlayState extends State<HeartBurstOverlay> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  final List<HeartParticle> _particles = [];
+  final Random _random = Random();
+
+  @override
+  void initState() {
+    super.initState();
+    // Generate particles
+    for (int i = 0; i < 15; i++) {
+        _particles.add(HeartParticle(
+            angle: _random.nextDouble() * 2 * pi,
+            speed: _random.nextDouble() * 100 + 50,
+            scale: _random.nextDouble() * 0.5 + 0.5,
+        ));
+    }
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    );
+    
+    _controller.forward().then((_) {
+        // Remove overlay when done
+        if (mounted) {
+            // Find the overlay entry? In this structure, we can't easily self-remove 
+            // without passing the entry. 
+            // Actually, usually the parent removes it, or we rely on it being invisible.
+            // But OverlayEntries sticks around. 
+            // A common pattern is to pass the entry to the widget or use a Timer in the parent builder.
+            // Simplified: This widget is built inside the OverlayEntry builder. 
+            // We can't remove the entry from here easily.
+            // BETTER APPROACH: The parent `_triggerBurstAndNavigate` created it.
+            // But `OverlayEntry` doesn't auto-dispose.
+            // Fix: We'll modify `_triggerBurstAndNavigate` to handle disposal. 
+            // But wait, `builder` context is separate.
+            // Let's make this widget self-disposing is tricky.
+            // Standard way: store entry in a var, pass to widget, widget calls remove.
+        }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Stack(
+          children: _particles.map((p) {
+            final distance = p.speed * _controller.value;
+            final dx = cos(p.angle) * distance;
+            final dy = sin(p.angle) * distance - (100 * _controller.value); // Float up
+            final opacity = (1.0 - _controller.value).clamp(0.0, 1.0);
+
+            return Positioned(
+              left: widget.position.dx + dx - 10,
+              top: widget.position.dy + dy - 10,
+              child: Opacity(
+                opacity: opacity,
+                child: Transform.scale(
+                  scale: p.scale,
+                  child: const Text('💖', style: TextStyle(fontSize: 24, decoration: TextDecoration.none)),
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+}
+
+class HeartParticle {
+  final double angle;
+  final double speed;
+  final double scale;
+
+  HeartParticle({required this.angle, required this.speed, required this.scale});
 }
