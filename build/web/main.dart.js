@@ -90613,7 +90613,7 @@ A.asi.prototype={
 $0(){},
 $S:0}
 A.asj.prototype={
-$0(){return A.nC(this.a,"/direct_messages",t.X)},
+$0(){return A.nC(this.a,"/direct",t.X)},
 $S:0}
 A.ask.prototype={
 $2(a,b){var s,r,q=null
@@ -102538,7 +102538,7 @@ r($,"aUh","aOb",()=>{var q=new A.adA()
 q.yt($.aFC())
 return q})
 s($,"b94","dB",()=>$.jZ().gap9())
-s($,"b89","aQr",()=>{var q=null,p=A.b([A.jp(new A.aAA(),"/login"),A.jp(new A.aAB(),"/signup"),A.jp(new A.aAC(),"/feed"),A.jp(new A.aAE(),"/create_post"),A.jp(new A.aAF(),"/comments/:postId"),A.jp(new A.aAG(),"/search"),A.jp(new A.aAH(),"/setup-profile"),A.jp(new A.aAI(),"/profile"),A.jp(new A.aAJ(),"/profile/:userId"),A.jp(new A.aAK(),"/chat/:userId"),A.jp(new A.aAL(),"/direct_messages")],t.yo)
+s($,"b89","aQr",()=>{var q=null,p=A.b([A.jp(new A.aAA(),"/login"),A.jp(new A.aAB(),"/signup"),A.jp(new A.aAC(),"/feed"),A.jp(new A.aAE(),"/create_post"),A.jp(new A.aAF(),"/comments/:postId"),A.jp(new A.aAG(),"/search"),A.jp(new A.aAH(),"/setup-profile"),A.jp(new A.aAI(),"/profile"),A.jp(new A.aAJ(),"/profile/:userId"),A.jp(new A.aAK(),"/chat/:userId"),A.jp(new A.aAL(),"/direct")],t.yo)
 return A.aTX(!1,q,q,q,q,"/login",q,q,q,!1,q,!0,q,!1,new A.Tp(new A.ajc(p,new A.aAD(),5,q)))})
 s($,"b4y","aFD",()=>A.eR(""))
 r($,"b4C","aFE",()=>{var q=null

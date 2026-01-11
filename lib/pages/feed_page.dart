@@ -35,7 +35,7 @@ class _FeedPageState extends State<FeedPage> {
           ),
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline),
-            onPressed: () => context.push('/direct_messages'),
+            onPressed: () => context.push('/direct'),
           ),
         ],
       ),

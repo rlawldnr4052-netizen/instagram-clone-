@@ -82,7 +82,7 @@ final _router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/direct_messages',
+      path: '/direct',
       builder: (context, state) => const DirectMessagesPage(),
     ),
   ],
