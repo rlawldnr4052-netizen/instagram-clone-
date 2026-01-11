@@ -22,10 +22,38 @@ class _SearchPageState extends State<SearchPage> {
   Future<void> _fetchUsers() async {
     try {
       final myUserId = supabase.auth.currentUser!.id;
+
+      // 1. Get IDs of people I follow
+      final followingResponse = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', myUserId);
+      final followingIds = (followingResponse as List)
+          .map((e) => e['following_id'] as String)
+          .toSet();
+
+      // 2. Get IDs of people following me
+      final followersResponse = await supabase
+          .from('follows')
+          .select('follower_id')
+          .eq('following_id', myUserId);
+      final followerIds = (followersResponse as List)
+          .map((e) => e['follower_id'] as String)
+          .toSet();
+
+      // 3. Find Mutuals (Intersection)
+      final mutualIds = followingIds.intersection(followerIds).toList();
+
+      if (mutualIds.isEmpty) {
+         if (mounted) setState(() { _users = []; _isLoading = false; });
+         return;
+      }
+
+      // 4. Fetch Profiles for Mutuals
       final response = await supabase
           .from('profiles')
           .select()
-          .neq('id', myUserId); // Don't show myself
+          .inFilter('id', mutualIds);
       
       if (mounted) {
         setState(() {
@@ -36,9 +64,8 @@ class _SearchPageState extends State<SearchPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(content: Text('Error fetching users: $e')),
-        );
+        // Clean error handling
+        debugPrint('Error fetching users: $e');
       }
     }
   }
@@ -49,7 +76,9 @@ class _SearchPageState extends State<SearchPage> {
       appBar: AppBar(title: const Text('Search Users')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
+          : _users.isEmpty 
+              ? const Center(child: Text('No mutual followers found.', style: TextStyle(color: Colors.grey)))
+              : ListView.builder(
               itemCount: _users.length,
               itemBuilder: (context, index) {
                 final user = _users[index];

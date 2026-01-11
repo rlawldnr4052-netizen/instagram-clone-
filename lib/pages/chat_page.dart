@@ -34,6 +34,40 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _fetchOtherUserProfile() async {
     try {
+      final myUserId = supabase.auth.currentUser!.id;
+
+      // 1. Guard: Check for Mutual Follow
+      final mutualCheck = await supabase
+          .from('follows')
+          .select()
+          .or('and(follower_id.eq.$myUserId,following_id.eq.${widget.otherUserId}),and(follower_id.eq.${widget.otherUserId},following_id.eq.$myUserId)');
+      
+      // Must have 2 records (I follow them, They follow me)
+      // Or we can query individually if RLS complicates .or()
+      
+      final iFollowThem = await supabase
+          .from('follows')
+          .count()
+          .eq('follower_id', myUserId)
+          .eq('following_id', widget.otherUserId);
+      
+      final theyFollowMe = await supabase
+          .from('follows')
+          .count()
+          .eq('follower_id', widget.otherUserId)
+          .eq('following_id', myUserId);
+
+      if (iFollowThem == 0 || theyFollowMe == 0) {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text('You can only DM mutual followers!')),
+           );
+           context.go('/feed'); // Redirect to Feed
+        }
+        return;
+      }
+
+      // 2. Fetch Profile Checks out
       final data = await supabase
           .from('profiles')
           .select('username, avatar_url')
@@ -46,7 +80,8 @@ class _ChatPageState extends State<ChatPage> {
         });
       }
     } catch (e) {
-      debugPrint('Error fetching user: $e');
+      debugPrint('Error fetching user or checking mutuals: $e');
+      if (mounted) context.go('/feed');
     }
   }
 
