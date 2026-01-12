@@ -10,16 +10,35 @@ class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
 
   @override
-  State<FeedPage> createState() => _FeedPageState();
+  State<FeedPage> createState() => FeedPageState();
 }
 
-class _FeedPageState extends State<FeedPage> {
+class FeedPageState extends State<FeedPage> {
+  final ScrollController _scrollController = ScrollController();
+
   Future<List<Map<String, dynamic>>> _fetchPosts() async {
     final response = await supabase
         .from('posts')
         .select('*, profiles(username, avatar_url, status_emoji), likes(user_id)')
         .order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(response);
+  }
+
+  Future<void> scrollToTopAndRefresh() async {
+    if (_scrollController.hasClients) {
+      await _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeOut,
+      );
+    }
+    setState(() {}); // Triggers FutureBuilder to re-run _fetchPosts
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -48,6 +67,8 @@ class _FeedPageState extends State<FeedPage> {
               setState(() {});
             },
             child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.only(top: 100, bottom: 100), // Add padding for floating UI
               itemCount: posts.length,
               itemBuilder: (context, index) {
                 final postData = posts[index];
