@@ -159,12 +159,17 @@ class _StoryBarState extends State<StoryBar> {
       // Show Active Story (Gradient Ring)
       return GestureDetector(
         onTap: () {
+          // Sort stories by createdAt (Oldest -> Newest) for playback
+          final sortedStories = List<Story>.from(myStories)
+            ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+            
           Navigator.of(context).push(
             MaterialPageRoute(
-               builder: (context) => StoryViewPage(stories: myStories),
+               builder: (context) => StoryViewPage(stories: sortedStories),
             ),
           );
         },
+        onLongPress: _uploadStory, // Allow adding more stories
         child: Column(
           children: [
             Container(
