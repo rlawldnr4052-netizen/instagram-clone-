@@ -137,11 +137,21 @@ class _MainPageState extends State<MainPage> {
                       // 3. Add (Center)
                       _buildAddButton(),
                       // 4. Heart (Activity) - Navigates to /activity
-                      GlassButton(
-                        icon: Icons.favorite_border,
-                        size: 40,
-                        isSelected: false,
+                      // 4. Heart (Activity)
+                      GestureDetector(
                         onTap: () => context.push('/activity'),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: Colors.transparent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.favorite_border,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
                       ),
                       // 5. Profile
                       _buildIcon(Icons.person, 3),
@@ -162,32 +172,34 @@ class _MainPageState extends State<MainPage> {
       onTap: () => _onItemTapped(index),
       child: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withOpacity(0.2) : Colors.transparent,
+        decoration: const BoxDecoration(
+          color: Colors.transparent, // Removed background
           shape: BoxShape.circle,
         ),
         child: Icon(
           icon,
-          color: Colors.white, // Always white
+          color: isSelected ? Colors.pinkAccent : Colors.white, // Active Pink
           size: 28,
         ),
       ),
     );
   }
-  
-  // ... _buildAddButton and _onItemTapped ...
 
   Widget _buildAddButton() {
     return GestureDetector(
       onTap: () => _onItemTapped(2),
       child: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withOpacity(0.3)),
-        ),
-        child: const Icon(Icons.add, color: Colors.white, size: 30),
+         // Removed background and border based on "remove white circle" request. 
+         // But usually + needs to be distinct. 
+         // User said "white circle (shape) remove". 
+         // I'll make it a simple icon but maybe slightly larger or just white/pink.
+         // Let's make it consistent with others but maybe keep it white as it's an action?
+         // Or if "Upload" is a page (index 2), then if selected it becomes pink. 
+         // Wait, _onItemTapped(2) pushes a route, so _selectedIndex never becomes 2. 
+         // So it will always be the "unselected" color. 
+         // I'll keep it white.
+        child: const Icon(Icons.add_circle_outline, color: Colors.white, size: 32),
       ),
     );
   }
