@@ -25,7 +25,10 @@ class _StoryBarState extends State<StoryBar> {
 
   Future<void> _fetchStories() async {
     try {
-      final now = DateTime.now();
+      final myId = supabase.auth.currentUser?.id;
+      debugPrint('StoryBar: My ID: $myId');
+
+      final now = DateTime.now().toUtc();
       final yesterday = now.subtract(const Duration(hours: 24));
       
       final response = await supabase
@@ -36,6 +39,11 @@ class _StoryBarState extends State<StoryBar> {
 
       final stories = (response as List).map((data) => Story.fromMap(data)).toList();
       
+      debugPrint('StoryBar: Fetched ${stories.length} stories');
+      for (var s in stories) {
+         debugPrint(' - Story User: ${s.userId} (Match: ${s.userId == myId})');
+      }
+
       if (mounted) {
         setState(() {
           _stories = stories;
