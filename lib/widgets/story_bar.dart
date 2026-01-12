@@ -29,47 +29,44 @@ class _StoryBarState extends State<StoryBar> {
     final yesterday = now.subtract(const Duration(hours: 24));
     List<Story> fetchedStories = [];
 
-    // 1. Try Main Query (with Join)
     try {
+      // 1. Fetch Stories (No Join)
       final response = await supabase
           .from('stories')
-          .select('*, profiles!stories_user_id_fkey(*)')
+          .select()
           .gte('created_at', yesterday.toIso8601String())
           .order('created_at', ascending: false);
       
-      fetchedStories = (response as List).map((data) => Story.fromMap(data)).toList();
-    } catch (e) {
-      debugPrint('Main Story Query Failed (PGRST200?): $e');
-    }
+      final rawStories = List<Map<String, dynamic>>.from(response as List);
 
-    // 2. Fallback Check for "My Story" (No Join) - Force UI update
-    if (myId != null) {
-      try {
-        final myResponse = await supabase
-            .from('stories')
-            .select() // No join, just get my stories
-            .eq('user_id', myId)
-            .gte('created_at', yesterday.toIso8601String())
-            .order('created_at', ascending: false);
+      if (rawStories.isNotEmpty) {
+        // 2. Fetch Profiles manualy
+        final userIds = rawStories.map((s) => s['user_id'] as String).toSet().toList();
+        final profilesResponse = await supabase
+            .from('profiles')
+            .select()
+            .filter('id', 'in', userIds);
         
-        final myRawStories = (myResponse as List).map((data) => Story(
-          id: data['id'],
-          userId: data['user_id'],
-          imageUrl: data['image_url'],
-          createdAt: DateTime.parse(data['created_at']),
-          username: 'Me', // Placeholder
-          avatarUrl: null, // Placeholder
-        )).toList();
+        final profilesMap = {
+          for (var p in profilesResponse) p['id'] as String: p
+        };
 
-        // Merge: Add if not already present
-        for (var myStory in myRawStories) {
-          if (!fetchedStories.any((s) => s.id == myStory.id)) {
-            fetchedStories.insert(0, myStory);
-          }
-        }
-      } catch (e) {
-        debugPrint('Fallback My-Story Query Failed: $e');
+        // 3. Merge Data
+        fetchedStories = rawStories.map((data) {
+          final profile = profilesMap[data['user_id']];
+          return Story(
+            id: data['id'],
+            userId: data['user_id'],
+            imageUrl: data['image_url'],
+            createdAt: DateTime.parse(data['created_at']),
+            username: profile?['username'] ?? 'User',
+            avatarUrl: profile?['avatar_url'],
+          );
+        }).toList();
       }
+
+    } catch (e) {
+      debugPrint('Story Query Failed: $e');
     }
 
     if (mounted) {
@@ -88,22 +85,19 @@ class _StoryBarState extends State<StoryBar> {
 
     try {
       final userId = supabase.auth.currentUser!.id;
-      // Force simple filename: timestamp + jpg (ignoring original extension for safety against .app leaks)
+      // Force simple filename: timestamp + jpg
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final filePath = '$userId/$fileName';
+      final filePath = fileName; // No folders, just filename for simplicity
 
       await supabase.storage.from('stories').uploadBinary(
         filePath,
         await image.readAsBytes(),
-        fileOptions: const FileOptions(contentType: 'image/jpeg'),
+        fileOptions: const FileOptions(contentType: 'image/jpeg', upsert: true),
       );
        
-      // Use Signed URL to bypass public policy issues (valid for 1 year)
-      final imageUrl = await supabase.storage.from('stories').createSignedUrl(
-        filePath,
-        60 * 60 * 24 * 365, // 1 year
-      );
-      debugPrint('UPLOADED_SIGNED_URL: $imageUrl');
+      // Get Public URL
+      final imageUrl = supabase.storage.from('stories').getPublicUrl(filePath);
+      debugPrint('UPLOADED_URL: $imageUrl');
 
       await supabase.from('stories').insert({
         'user_id': userId,

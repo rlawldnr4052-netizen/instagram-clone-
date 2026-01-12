@@ -147,22 +147,47 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
                     width: double.infinity,
                     height: double.infinity,
                     loadingBuilder: (context, child, loadingProgress) {
-                   if (loadingProgress == null) return child;
-                   return const Center(child: CircularProgressIndicator());
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  debugPrint('StoryView: Failed to load image: ${story.imageUrl}');
-                  debugPrint('StoryView Error: $error');
-                  return Column(
-                     mainAxisAlignment: MainAxisAlignment.center,
-                     children: [
-                       const Icon(Icons.error, color: Colors.white, size: 40),
-                       Text(story.imageUrl, style: const TextStyle(color: Colors.white, fontSize: 10)),
-                     ],
+                       if (loadingProgress == null) return child;
+                       return Center(
+                         child: Column(
+                           mainAxisAlignment: MainAxisAlignment.center,
+                           children: [
+                             const CircularProgressIndicator(),
+                             const SizedBox(height: 8),
+                             Text('Loading...', style: TextStyle(color: Colors.white.withOpacity(0.5))),
+                           ],
+                         ),
+                       );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      debugPrint('StoryView: Failed to load image: ${story.imageUrl}');
+                      debugPrint('StoryView Error: $error');
+                      return Center(
+                        child: SingleChildScrollView(
+                          child: Column(
+                             mainAxisAlignment: MainAxisAlignment.center,
+                             children: [
+                               const Icon(Icons.error, color: Colors.red, size: 40),
+                               const SizedBox(height: 10),
+                               const Text('Failed to load image', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                               const SizedBox(height: 5),
+                               Padding(
+                                 padding: const EdgeInsets.all(8.0),
+                                 child: Text(
+                                   story.imageUrl, 
+                                   textAlign: TextAlign.center,
+                                   style: const TextStyle(color: Colors.white70, fontSize: 10),
+                                 ),
+                               ),
+                               Text('Error: $error', style: const TextStyle(color: Colors.red, fontSize: 10)),
+                             ],
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
-              );
-            }),
+            ),
             ),
 
             // Progress Bar
