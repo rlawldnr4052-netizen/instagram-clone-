@@ -33,7 +33,7 @@ class _FeedPageState extends State<FeedPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.favorite_border),
-            onPressed: () {},
+            onPressed: () => context.push('/activity'),
           ),
           IconButton(
             icon: const Icon(Icons.send_rounded, color: Colors.pink),

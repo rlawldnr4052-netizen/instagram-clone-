@@ -12,7 +12,8 @@ import 'package:instagram_clone/pages/search_page.dart';
 import 'package:instagram_clone/pages/profile_setup_page.dart';
 import 'package:instagram_clone/pages/profile_page.dart';
 import 'package:instagram_clone/pages/chat_page.dart';
-import 'package:instagram_clone/pages/direct_messages_page.dart'; // Import
+import 'package:instagram_clone/pages/direct_messages_page.dart';
+import 'package:instagram_clone/pages/activity_page.dart'; // Import
 
 
 void main() async {
@@ -44,6 +45,11 @@ final _router = GoRouter(
       path: '/feed',
       name: 'feed',
       builder: (context, state) => const MainPage(),
+    ),
+    GoRoute(
+      path: '/activity',
+      name: 'activity',
+      builder: (context, state) => const ActivityPage(),
     ),
 // ...
     GoRoute(
