@@ -88,8 +88,10 @@ class _StoryBarState extends State<StoryBar> {
 
     try {
       final userId = supabase.auth.currentUser!.id;
-      final fileExt = image.path.split('.').last;
-      final fileName = '${DateTime.now().toIso8601String()}.$fileExt';
+      // Safer extension extraction using mimeType, default to jpg
+      final fileExt = image.mimeType?.split('/').last ?? 'jpg';
+      // Clean filename using timestamp
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
       final filePath = '$userId/$fileName';
 
       await supabase.storage.from('stories').uploadBinary(
