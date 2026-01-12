@@ -113,7 +113,7 @@ class _StoryBarState extends State<StoryBar> {
         scrollDirection: Axis.horizontal,
         children: [
           const SizedBox(width: 10),
-          _buildMyStoryButton(myStories.isNotEmpty),
+          _buildMyStoryButton(myStories),
           ...otherStories.map((story) => _buildStoryItem(story)),
           const SizedBox(width: 10),
         ],
@@ -121,54 +121,92 @@ class _StoryBarState extends State<StoryBar> {
     );
   }
 
-  Widget _buildMyStoryButton(bool hasStory) {
-    // We should show the user's avatar here. Ideally check profile cache or fetch.
-    // For now we can assume we might need to fetch it or just use a placeholder if not loaded in Feed.
-    // FeedPage likely has it? No, it's separate. 
-    // Let's rely on a simple fetch or placeholder. 
-    // Actually, we can assume the user has a profile.
-    
-    // Simplification: Icon with +
-    return GestureDetector(
-      onTap: _uploadStory,
-      child: Column(
-        children: [
-          Stack(
-            children: [
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 8),
-                padding: const EdgeInsets.all(3),
+  Widget _buildMyStoryButton(List<Story> myStories) {
+    final hasStory = myStories.isNotEmpty;
+
+    if (hasStory) {
+      // Show Active Story (Gradient Ring)
+      return GestureDetector(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+               builder: (context) => StoryViewPage(stories: myStories),
+            ),
+          );
+        },
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [Colors.purple, Colors.pink, Colors.orange],
+                  begin: Alignment.bottomLeft,
+                  end: Alignment.topRight,
+                ),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(2),
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.transparent, // No border for "My Story" unless posted?
-                  // User said: "My profile and '+' icon at the front"
+                  color: Colors.black,
                 ),
                 child: const CircleAvatar(
-                   radius: 32,
-                   backgroundColor: Colors.grey,
-                   child: Icon(Icons.person, color: Colors.white),
-                   // TODO: Bind to real user avatar if available
+                  radius: 28,
+                  backgroundColor: Colors.grey,
+                  child: Icon(Icons.person, color: Colors.white),
                 ),
               ),
-              Positioned(
-                bottom: 0,
-                right: 5,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
+            ),
+            const SizedBox(height: 4),
+            const Text('Your Story', style: TextStyle(color: Colors.white, fontSize: 12)),
+          ],
+        ),
+      );
+    } else {
+      // Show Upload Button (+ Badge)
+      return GestureDetector(
+        onTap: _uploadStory,
+        child: Column(
+          children: [
+            Stack(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.all(3),
                   decoration: const BoxDecoration(
-                    color: Colors.blue,
                     shape: BoxShape.circle,
+                    color: Colors.transparent,
                   ),
-                  child: const Icon(Icons.add, color: Colors.white, size: 16),
+                  child: const CircleAvatar(
+                     radius: 32, // Slightly larger match visual
+                     backgroundColor: Colors.grey,
+                     child: Icon(Icons.person, color: Colors.white),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text('Your Story', style: TextStyle(color: Colors.white, fontSize: 12)),
-        ],
-      ),
-    );
+                Positioned(
+                  bottom: 0,
+                  right: 5,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      color: Colors.blue,
+                      shape: BoxShape.circle,
+                      border: Border.fromBorderSide(BorderSide(color: Colors.black, width: 2)),
+                    ),
+                    child: const Icon(Icons.add, color: Colors.white, size: 16),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text('Your Story', style: TextStyle(color: Colors.white, fontSize: 12)),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildStoryItem(Story story) {
