@@ -25,24 +25,9 @@ class _FeedPageState extends State<FeedPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Fakegram',
-          style: GoogleFonts.lobster(fontSize: 32),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.favorite_border),
-            onPressed: () => context.push('/activity'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.send_rounded, color: Colors.pink),
-            onPressed: () {
-              context.goNamed('direct');
-            },
-          ),
-        ],
-      ),
+      // AppBar removed for Glass UI
+      extendBodyBehindAppBar: true, // Allow content to go behind top buttons if any
+
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _fetchPosts(),
         builder: (context, snapshot) {
