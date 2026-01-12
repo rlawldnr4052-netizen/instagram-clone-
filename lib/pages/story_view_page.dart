@@ -105,7 +105,17 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
                    if (loadingProgress == null) return child;
                    return const Center(child: CircularProgressIndicator());
                 },
-                errorBuilder: (context, error, stackTrace) => const Icon(Icons.error, color: Colors.white),
+                errorBuilder: (context, error, stackTrace) {
+                  debugPrint('StoryView: Failed to load image: ${story.imageUrl}');
+                  debugPrint('StoryView Error: $error');
+                  return Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error, color: Colors.white, size: 40),
+                      Text(story.imageUrl, style: const TextStyle(color: Colors.white, fontSize: 10)),
+                    ],
+                  );
+                },
               ),
             ),
 
