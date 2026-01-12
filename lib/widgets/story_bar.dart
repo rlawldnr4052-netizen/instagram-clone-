@@ -156,50 +156,71 @@ class _StoryBarState extends State<StoryBar> {
     final hasStory = myStories.isNotEmpty;
 
     if (hasStory) {
-      // Show Active Story (Gradient Ring)
-      return GestureDetector(
-        onTap: () {
-          // Sort stories by createdAt (Oldest -> Newest) for playback
-          final sortedStories = List<Story>.from(myStories)
-            ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-            
-          Navigator.of(context).push(
-            MaterialPageRoute(
-               builder: (context) => StoryViewPage(stories: sortedStories),
-            ),
-          );
-        },
-        onLongPress: _uploadStory, // Allow adding more stories
-        child: Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              padding: const EdgeInsets.all(3),
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [Colors.purple, Colors.pink, Colors.orange],
-                  begin: Alignment.bottomLeft,
-                  end: Alignment.topRight,
+      // Show Active Story (Gradient Ring) WITH persistent + button
+      return Column(
+        children: [
+          Stack(
+            children: [
+              // 1. Main Avatar -> View Story
+              GestureDetector(
+                onTap: () {
+                  // Sort stories by createdAt (Oldest -> Newest) for playback
+                  final sortedStories = List<Story>.from(myStories)
+                    ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+                    
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                       builder: (context) => StoryViewPage(stories: sortedStories),
+                    ),
+                  );
+                },
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.all(3),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [Colors.purple, Colors.pink, Colors.orange],
+                      begin: Alignment.bottomLeft,
+                      end: Alignment.topRight,
+                    ),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black,
+                    ),
+                    child: const CircleAvatar(
+                      radius: 28,
+                      backgroundColor: Colors.grey,
+                      child: Icon(Icons.person, color: Colors.white),
+                    ),
+                  ),
                 ),
               ),
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.black,
-                ),
-                child: const CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.grey,
-                  child: Icon(Icons.person, color: Colors.white),
+              // 2. Small Plus Button -> Add Story
+              Positioned(
+                bottom: 0,
+                right: 5,
+                child: GestureDetector(
+                  onTap: _uploadStory, // Triggers upload immediately
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      color: Colors.blue,
+                      shape: BoxShape.circle,
+                      border: Border.fromBorderSide(BorderSide(color: Colors.black, width: 2)),
+                    ),
+                    child: const Icon(Icons.add, color: Colors.white, size: 16),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 4),
-            const Text('Your Story', style: TextStyle(color: Colors.white, fontSize: 12)),
-          ],
-        ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text('Your Story', style: TextStyle(color: Colors.white, fontSize: 12)),
+        ],
       );
     } else {
       // Show Upload Button (+ Badge)
