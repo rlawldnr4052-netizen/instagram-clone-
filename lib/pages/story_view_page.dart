@@ -87,7 +87,7 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
         _hasChanges = true;
         _currentStories.remove(story);
         if (_currentStories.isEmpty) {
-          Navigator.of(context).pop(true); 
+          Navigator.of(context).pop(true);  // Return true to trigger refresh 
         } else {
           // Adjust index if needed
           if (_currentIndex >= _currentStories.length) {

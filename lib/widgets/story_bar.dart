@@ -166,13 +166,15 @@ class _StoryBarState extends State<StoryBar> {
                   final sortedStories = List<Story>.from(myStories)
                     ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
                     
-                  await Navigator.of(context).push(
+                  final result = await Navigator.of(context).push(
                     MaterialPageRoute(
                        builder: (context) => StoryViewPage(stories: sortedStories),
                     ),
                   );
-                  // Refresh stories on return (in case of deletion)
-                  _fetchStories();
+                  // Refresh stories if changes occurred (delete/view)
+                  if (result == true) {
+                    _fetchStories();
+                  }
                 },
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -268,14 +270,17 @@ class _StoryBarState extends State<StoryBar> {
 
   Widget _buildStoryItem(Story story) {
     return GestureDetector(
-      onTap: () {
+      onTap: () async {
         // Open story view
-        Navigator.of(context).push(
+        final result = await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => StoryViewPage(stories: [story]),
             // Ideally we pass all stories for that user or all stories in feed
           ),
         );
+        if (result == true) {
+           _fetchStories();
+        }
       },
       child: Column(
         children: [
