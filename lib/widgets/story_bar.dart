@@ -97,7 +97,8 @@ class _StoryBarState extends State<StoryBar> {
        
       // Get Public URL
       final imageUrl = supabase.storage.from('stories').getPublicUrl(filePath);
-      debugPrint('UPLOADED_URL: $imageUrl');
+      debugPrint('DEBUG: FilePath: $filePath');
+      debugPrint('DEBUG: Final URL: $imageUrl');
 
       await supabase.from('stories').insert({
         'user_id': userId,
