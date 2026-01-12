@@ -179,7 +179,13 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
                                    style: const TextStyle(color: Colors.white70, fontSize: 10),
                                  ),
                                ),
-                               Text('Error: $error', style: const TextStyle(color: Colors.red, fontSize: 10)),
+
+                               if (error.toString().contains('404'))
+                                 const Text('404 Not Found (Check Path)', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+                               else if (error.toString().contains('403'))
+                                 const Text('403 Forbidden (Check Policy)', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+                               else
+                                 Text('Error: $error', style: const TextStyle(color: Colors.red, fontSize: 10), textAlign: TextAlign.center),
                              ],
                           ),
                         ),

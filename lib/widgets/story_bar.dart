@@ -97,8 +97,12 @@ class _StoryBarState extends State<StoryBar> {
        
       // Get Public URL
       final imageUrl = supabase.storage.from('stories').getPublicUrl(filePath);
-      debugPrint('DEBUG: FilePath: $filePath');
-      debugPrint('DEBUG: Final URL: $imageUrl');
+      
+      // Manual Validation Log
+      if (imageUrl.contains('//stories//')) {
+        debugPrint('CRITICAL WARNING: Double slash detected in URL!');
+      }
+      debugPrint('VALIDATED URL [Standard]: $imageUrl');
 
       await supabase.from('stories').insert({
         'user_id': userId,
