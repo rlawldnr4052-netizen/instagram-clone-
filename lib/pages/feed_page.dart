@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:instagram_clone/models/post.dart';
+import 'package:instagram_clone/widgets/story_bar.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -64,14 +65,17 @@ class FeedPageState extends State<FeedPage> {
 
           return RefreshIndicator(
             onRefresh: () async {
-              setState(() {});
+               setState(() {});
             },
             child: ListView.builder(
               controller: _scrollController,
-              padding: const EdgeInsets.only(top: 100, bottom: 100), // Add padding for floating UI
-              itemCount: posts.length,
+              padding: const EdgeInsets.only(top: 100, bottom: 100),
+              itemCount: posts.length + 1, // +1 for StoryBar
               itemBuilder: (context, index) {
-                final postData = posts[index];
+                if (index == 0) {
+                  return const StoryBar();
+                }
+                final postData = posts[index - 1]; // Adjust index
                 final post = Post.fromMap(postData);
                 final likes = (postData['likes'] as List).length;
                 final myUserId = supabase.auth.currentUser?.id;
