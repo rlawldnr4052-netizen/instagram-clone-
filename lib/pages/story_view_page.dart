@@ -184,10 +184,10 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
               ),
             ),
 
-            // User Info
+            // User Info - Moved to Bottom Left
             Positioned(
-              top: 55,
-              left: 15,
+              bottom: 40,
+              left: 16,
               child: Row(
                 children: [
                   CircleAvatar(
@@ -210,11 +210,11 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
               ),
             ),
             
-            // Delete Button (Only for own stories)
+            // Delete Button (Only for own stories) - Moved to Top Left to avoid overlap
             if (story.userId == Supabase.instance.client.auth.currentUser?.id)
               Positioned(
-                top: 55,
-                right: 15,
+                top: 50,
+                left: 16,
                 child: IconButton(
                   icon: const Icon(Icons.delete, color: Colors.white),
                   onPressed: () {
