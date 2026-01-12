@@ -98,8 +98,12 @@ class _StoryBarState extends State<StoryBar> {
         fileOptions: const FileOptions(contentType: 'image/jpeg'),
       );
        
-      final imageUrl = supabase.storage.from('stories').getPublicUrl(filePath);
-      debugPrint('UPLOADED_URL: $imageUrl');
+      // Use Signed URL to bypass public policy issues (valid for 1 year)
+      final imageUrl = await supabase.storage.from('stories').createSignedUrl(
+        filePath,
+        60 * 60 * 24 * 365, // 1 year
+      );
+      debugPrint('UPLOADED_SIGNED_URL: $imageUrl');
 
       await supabase.from('stories').insert({
         'user_id': userId,

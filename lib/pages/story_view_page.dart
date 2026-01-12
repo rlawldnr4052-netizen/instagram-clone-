@@ -138,12 +138,15 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
           children: [
             // Image
             Center(
-              child: Image.network(
-                story.imageUrl,
-                fit: BoxFit.contain,
-                width: double.infinity,
-                height: double.infinity,
-                loadingBuilder: (context, child, loadingProgress) {
+              child: Builder(
+                builder: (context) {
+                  debugPrint('STORY_IMAGE_URL: ${story.imageUrl}');
+                  return Image.network(
+                    story.imageUrl,
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                    height: double.infinity,
+                    loadingBuilder: (context, child, loadingProgress) {
                    if (loadingProgress == null) return child;
                    return const Center(child: CircularProgressIndicator());
                 },
@@ -158,7 +161,8 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
                      ],
                   );
                 },
-              ),
+              );
+            }),
             ),
 
             // Progress Bar
