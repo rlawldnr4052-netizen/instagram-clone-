@@ -43,7 +43,7 @@ class _StoryBarState extends State<StoryBar> {
         });
       }
     } catch (e) {
-      debugPrint('Error fetching stories: $e');
+      debugPrint('Error fetching stories (Table: stories): $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
