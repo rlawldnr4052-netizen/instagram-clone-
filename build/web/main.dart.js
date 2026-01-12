@@ -92136,7 +92136,7 @@ k=new A.dk(Date.now(),0,!1).xz()+"."+A.i(l)
 j=A.i(m)+"/"+A.i(k)
 f=g.at
 f===$&&A.a()
-e=f.bF("posts")
+e=f.bF("stories")
 s=8
 return A.m(a.th(),$async$oE)
 case 8:d=a2
@@ -92144,7 +92144,7 @@ c=a.a
 c.toString
 s=9
 return A.m(e.pV(j,d,new A.AM(!1,c)),$async$oE)
-case 9:i=f.bF("posts").xP(j)
+case 9:i=f.bF("stories").xP(j)
 f=t.N
 s=10
 return A.m(g.bF("stories").eq(0,A.a2(["user_id",m,"image_url",i],f,f)),$async$oE)

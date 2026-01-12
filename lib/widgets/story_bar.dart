@@ -62,13 +62,13 @@ class _StoryBarState extends State<StoryBar> {
       final fileName = '${DateTime.now().toIso8601String()}.$fileExt';
       final filePath = '$userId/$fileName';
 
-      await supabase.storage.from('posts').uploadBinary(
+      await supabase.storage.from('stories').uploadBinary(
         filePath,
         await image.readAsBytes(),
         fileOptions: FileOptions(contentType: image.mimeType!),
       );
        
-      final imageUrl = supabase.storage.from('posts').getPublicUrl(filePath);
+      final imageUrl = supabase.storage.from('stories').getPublicUrl(filePath);
 
       await supabase.from('stories').insert({
         'user_id': userId,
