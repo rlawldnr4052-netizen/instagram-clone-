@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:instagram_clone/models/story.dart';
 
 class StoryViewPage extends StatefulWidget {
@@ -21,11 +22,14 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
   late int _currentIndex;
   late AnimationController _animationController;
   Timer? _nextStoryTimer;
+  late List<Story> _currentStories;
+  bool _hasChanges = false;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    _currentStories = List.from(widget.stories);
     _setupAnimation();
   }
 
@@ -44,16 +48,20 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
     
     _animationController.forward();
   }
+  
+  void _startTimer() {
+    _animationController.forward();
+  }
 
   void _nextStory() {
-    if (_currentIndex < widget.stories.length - 1) {
+    if (_currentIndex < _currentStories.length - 1) {
       setState(() {
         _currentIndex++;
         _animationController.reset();
         _animationController.forward();
       });
     } else {
-      context.pop(); // Close if last story
+      context.pop(_hasChanges); // Close if last story
     }
   }
 
@@ -70,6 +78,31 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
     }
   }
 
+  Future<void> _deleteStory(Story story) async {
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase.from('stories').delete().eq('id', story.id);
+      
+      setState(() {
+        _hasChanges = true;
+        _currentStories.remove(story);
+        if (_currentStories.isEmpty) {
+          Navigator.of(context).pop(true); 
+        } else {
+          // Adjust index if needed
+          if (_currentIndex >= _currentStories.length) {
+            _currentIndex = _currentStories.length - 1;
+          }
+           _animationController.reset();
+           _startTimer(); 
+        }
+      });
+      debugPrint('Story deleted: ${story.id}');
+    } catch (e) {
+      debugPrint('Error deleting story: $e');
+    }
+  }
+
   @override
   void dispose() {
     _animationController.dispose();
@@ -77,9 +110,18 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
     super.dispose();
   }
 
+  String _timeAgo(DateTime dateTime) {
+    final diff = DateTime.now().difference(dateTime);
+    if (diff.inDays > 0) return '${diff.inDays}d';
+    if (diff.inHours > 0) return '${diff.inHours}h';
+    if (diff.inMinutes > 0) return '${diff.inMinutes}m';
+    return 'now';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final story = widget.stories[_currentIndex];
+    if (_currentStories.isEmpty) return const SizedBox();
+    final story = _currentStories[_currentIndex];
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -98,7 +140,7 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
             Center(
               child: Image.network(
                 story.imageUrl,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 width: double.infinity,
                 height: double.infinity,
                 loadingBuilder: (context, child, loadingProgress) {
@@ -109,11 +151,11 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
                   debugPrint('StoryView: Failed to load image: ${story.imageUrl}');
                   debugPrint('StoryView Error: $error');
                   return Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error, color: Colors.white, size: 40),
-                      Text(story.imageUrl, style: const TextStyle(color: Colors.white, fontSize: 10)),
-                    ],
+                     mainAxisAlignment: MainAxisAlignment.center,
+                     children: [
+                       const Icon(Icons.error, color: Colors.white, size: 40),
+                       Text(story.imageUrl, style: const TextStyle(color: Colors.white, fontSize: 10)),
+                     ],
                   );
                 },
               ),
@@ -124,39 +166,79 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
               top: 40,
               left: 10,
               right: 10,
-              child: LinearProgressIndicator(
-                value: _animationController.value,
-                backgroundColor: Colors.grey[800],
-                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+              child: Row(
+                children: _currentStories.asMap().entries.map((entry) {
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: LinearProgressIndicator(
+                        value: entry.key == _currentIndex 
+                            ? _animationController.value 
+                            : (entry.key < _currentIndex ? 1.0 : 0.0),
+                        backgroundColor: Colors.white.withOpacity(0.3),
+                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
             ),
 
             // User Info
             Positioned(
               top: 55,
-              left: 16,
+              left: 15,
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundImage: story.avatarUrl != null 
-                      ? NetworkImage(story.avatarUrl!) 
-                      : null,
                     radius: 16,
+                    backgroundImage: story.avatarUrl != null ? NetworkImage(story.avatarUrl!) : null,
                     backgroundColor: Colors.grey,
-                    child: story.avatarUrl == null ? const Icon(Icons.person, size: 16) : null,
+                    child: story.avatarUrl == null ? const Icon(Icons.person, size: 16, color: Colors.white) : null,
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    story.username ?? 'Unknown',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
+                    story.username ?? 'User',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _timeAgo(story.createdAt),
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ],
               ),
             ),
+            
+            // Delete Button (Only for own stories)
+            if (story.userId == Supabase.instance.client.auth.currentUser?.id)
+              Positioned(
+                top: 55,
+                right: 15,
+                child: IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.white),
+                  onPressed: () {
+                    _animationController.stop(); // Pause timer
+                    showDialog(
+                      context: context, 
+                      builder: (context) => AlertDialog(
+                        title: const Text('Delete Story?'),
+                        content: const Text('This cannot be undone.'),
+                        actions: [
+                          TextButton(onPressed: () {
+                             Navigator.pop(context);
+                             _startTimer(); // Resume
+                          }, child: const Text('Cancel')),
+                          TextButton(onPressed: () {
+                             Navigator.pop(context);
+                             _deleteStory(story);
+                          }, child: const Text('Delete', style: TextStyle(color: Colors.red))),
+                        ],
+                      )
+                    );
+                  },
+                ),
+              ),
 
             // Close Button
             Positioned(
@@ -164,7 +246,7 @@ class _StoryViewPageState extends State<StoryViewPage> with SingleTickerProvider
               right: 16,
               child: IconButton(
                 icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => context.pop(),
+                onPressed: () => context.pop(_hasChanges),
               ),
             ),
           ],

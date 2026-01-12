@@ -163,16 +163,18 @@ class _StoryBarState extends State<StoryBar> {
             children: [
               // 1. Main Avatar -> View Story
               GestureDetector(
-                onTap: () {
+                onTap: () async {
                   // Sort stories by createdAt (Oldest -> Newest) for playback
                   final sortedStories = List<Story>.from(myStories)
                     ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
                     
-                  Navigator.of(context).push(
+                  await Navigator.of(context).push(
                     MaterialPageRoute(
                        builder: (context) => StoryViewPage(stories: sortedStories),
                     ),
                   );
+                  // Refresh stories on return (in case of deletion)
+                  _fetchStories();
                 },
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 8),
