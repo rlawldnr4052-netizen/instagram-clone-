@@ -31,11 +31,15 @@ class _StoryBarState extends State<StoryBar> {
       final now = DateTime.now().toUtc();
       final yesterday = now.subtract(const Duration(hours: 24));
       
+      // Attempting to use the explicit foreign key name to resolve PGRST200
+      // Default naming convention: table_column_fkey -> stories_user_id_fkey
       final response = await supabase
           .from('stories')
-          .select('*, profiles(username, avatar_url)')
+          .select('*, profiles!stories_user_id_fkey(username, avatar_url)')
           .gte('created_at', yesterday.toIso8601String())
           .order('created_at', ascending: false);
+      
+      debugPrint('Raw Stories Data: $response');
 
       final stories = (response as List).map((data) => Story.fromMap(data)).toList();
       
