@@ -24,41 +24,59 @@ class _StoryBarState extends State<StoryBar> {
   }
 
   Future<void> _fetchStories() async {
-    try {
-      final myId = supabase.auth.currentUser?.id;
-      debugPrint('StoryBar: My ID: $myId');
+    final myId = supabase.auth.currentUser?.id;
+    final now = DateTime.now().toUtc();
+    final yesterday = now.subtract(const Duration(hours: 24));
+    List<Story> fetchedStories = [];
 
-      final now = DateTime.now().toUtc();
-      final yesterday = now.subtract(const Duration(hours: 24));
-      
-      // Attempting to use the explicit foreign key name to resolve PGRST200
-      // Default naming convention: table_column_fkey -> stories_user_id_fkey
+    // 1. Try Main Query (with Join)
+    try {
       final response = await supabase
           .from('stories')
-          .select('*, profiles!stories_user_id_fkey(username, avatar_url)')
+          .select('*, profiles!stories_user_id_fkey(*)')
           .gte('created_at', yesterday.toIso8601String())
           .order('created_at', ascending: false);
       
-      debugPrint('Raw Stories Data: $response');
-
-      final stories = (response as List).map((data) => Story.fromMap(data)).toList();
-      
-      debugPrint('StoryBar: Fetched ${stories.length} stories');
-      for (var s in stories) {
-         debugPrint(' - Story User: ${s.userId} (Match: ${s.userId == myId})');
-      }
-
-      if (mounted) {
-        setState(() {
-          _stories = stories;
-          _isLoading = false;
-        });
-      }
+      fetchedStories = (response as List).map((data) => Story.fromMap(data)).toList();
     } catch (e) {
-      debugPrint('Error fetching stories (Table: stories): $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
+      debugPrint('Main Story Query Failed (PGRST200?): $e');
+    }
+
+    // 2. Fallback Check for "My Story" (No Join) - Force UI update
+    if (myId != null) {
+      try {
+        final myResponse = await supabase
+            .from('stories')
+            .select() // No join, just get my stories
+            .eq('user_id', myId)
+            .gte('created_at', yesterday.toIso8601String())
+            .order('created_at', ascending: false);
+        
+        final myRawStories = (myResponse as List).map((data) => Story(
+          id: data['id'],
+          userId: data['user_id'],
+          imageUrl: data['image_url'],
+          createdAt: DateTime.parse(data['created_at']),
+          username: 'Me', // Placeholder
+          avatarUrl: null, // Placeholder
+        )).toList();
+
+        // Merge: Add if not already present
+        for (var myStory in myRawStories) {
+          if (!fetchedStories.any((s) => s.id == myStory.id)) {
+            fetchedStories.insert(0, myStory);
+          }
+        }
+      } catch (e) {
+        debugPrint('Fallback My-Story Query Failed: $e');
       }
+    }
+
+    if (mounted) {
+      setState(() {
+        _stories = fetchedStories;
+        _isLoading = false;
+      });
     }
   }
 
