@@ -140,6 +140,15 @@ class _StoryBarState extends State<StoryBar> {
     final myStories = _stories.where((s) => s.userId == myId).toList();
     final otherStories = _stories.where((s) => s.userId != myId).toList();
 
+    // Group other stories by User ID
+    final Map<String, List<Story>> groupedStories = {};
+    for (var story in otherStories) {
+      if (!groupedStories.containsKey(story.userId)) {
+        groupedStories[story.userId] = [];
+      }
+      groupedStories[story.userId]!.add(story);
+    }
+
     return Container(
       height: 110,
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -148,7 +157,10 @@ class _StoryBarState extends State<StoryBar> {
         children: [
           const SizedBox(width: 10),
           _buildMyStoryButton(myStories),
-          ...otherStories.map((story) => _buildStoryItem(story)),
+          ...groupedStories.entries.map((entry) {
+             // Pass the LIST of stories for this user
+             return _buildStoryItem(entry.value); 
+          }),
           const SizedBox(width: 10),
         ],
       ),
@@ -273,14 +285,22 @@ class _StoryBarState extends State<StoryBar> {
     }
   }
 
-  Widget _buildStoryItem(Story story) {
+  Widget _buildStoryItem(List<Story> userStories) {
+    if (userStories.isEmpty) return const SizedBox.shrink();
+    
+    // Use the first story for the avatar/name (all should be same user)
+    final mainStory = userStories.first; 
+
     return GestureDetector(
       onTap: () async {
-        // Open story view
+        // Sort stories chronologically for playback
+        final sortedStories = List<Story>.from(userStories)
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+        // Open story view with ALL stories from this user
         final result = await Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => StoryViewPage(stories: [story]),
-            // Ideally we pass all stories for that user or all stories in feed
+            builder: (context) => StoryViewPage(stories: sortedStories),
           ),
         );
         if (result == true) {
@@ -308,11 +328,11 @@ class _StoryBarState extends State<StoryBar> {
               ),
               child: CircleAvatar(
                 radius: 28, // Image size
-                backgroundImage: story.avatarUrl != null 
-                    ? NetworkImage(story.avatarUrl!) 
+                backgroundImage: mainStory.avatarUrl != null 
+                    ? NetworkImage(mainStory.avatarUrl!) 
                     : null,
                 backgroundColor: Colors.grey[800],
-                child: story.avatarUrl == null 
+                child: mainStory.avatarUrl == null 
                     ? const Icon(Icons.person, color: Colors.white) 
                     : null,
               ),
@@ -320,7 +340,7 @@ class _StoryBarState extends State<StoryBar> {
           ),
           const SizedBox(height: 4),
           Text(
-            story.username ?? 'User',
+            mainStory.username ?? 'User',
             style: const TextStyle(color: Colors.white, fontSize: 12),
           ),
         ],
