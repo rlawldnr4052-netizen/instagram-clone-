@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart'; // For Ticker
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:instagram_clone/models/story.dart';
@@ -22,19 +23,21 @@ class StoryViewPage extends StatefulWidget {
 
 class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateMixin {
   late int _currentIndex;
-  late AnimationController _progressController;
-  Timer? _nextStoryTimer;
+  late AnimationController _storyProgressController;
   late List<Story> _currentStories;
-  bool _hasChanges = false;
   
-  // Real-time & Comment Logic
+  // Real-time & Physics Logic
   final TextEditingController _replyController = TextEditingController();
   final FocusNode _replyFocusNode = FocusNode();
   RealtimeChannel? _subscription;
   
-  // Using a Set or Map to prevent duplicates might be smart, but List is fine for now
-  List<CommentModel> _comments = [];
+  // Physics Engine State
+  List<PhysicsCommentObject> _physicsObjects = [];
+  Ticker? _physicsTicker;
   final Random _random = Random();
+  Size? _screenSize;
+
+  bool _hasChanges = false;
 
   @override
   void initState() {
@@ -42,15 +45,23 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
     _currentIndex = widget.initialIndex;
     _currentStories = List.from(widget.stories);
     _setupAnimation();
-    _loadCommentsAndSubscribe();
+    
+    // Start Physics Engine
+    _physicsTicker = createTicker(_updatePhysics)..start();
+    
+    // Load Data
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _screenSize = MediaQuery.of(context).size;
+      _loadCommentsAndSubscribe();
+    });
   }
 
   void _setupAnimation() {
-    _progressController = AnimationController(
+    _storyProgressController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 5),
     )..addListener(() {
-        setState(() {});
+        setState(() {}); // Repaint linear progress
       })
       ..addStatusListener((status) {
         if (status == AnimationStatus.completed) {
@@ -58,22 +69,110 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
         }
       });
     
-    _progressController.forward();
+    _storyProgressController.forward();
+  }
+
+  // --- Physics Engine Loop ---
+  void _updatePhysics(Duration elapsed) {
+    if (_screenSize == null || _physicsObjects.isEmpty) return;
+
+    final width = _screenSize!.width;
+    final height = _screenSize!.height;
+    
+    // 1. Move & Rotate
+    for (var obj in _physicsObjects) {
+      obj.x += obj.vx;
+      obj.y += obj.vy;
+      obj.angle += obj.angularVelocity;
+      
+      // Wall Collision (Elastic)
+      // Check boundaries taking strict radius into account
+      // Margin to keep inside screen roughly
+      final radius = 40.0; // Approximation of half-width
+      
+      if (obj.x < radius) {
+        obj.x = radius;
+        obj.vx = -obj.vx; 
+      } else if (obj.x > width - radius) {
+        obj.x = width - radius;
+        obj.vx = -obj.vx;
+      }
+      
+      if (obj.y < radius) {
+        obj.y = radius;
+        obj.vy = -obj.vy;
+      } else if (obj.y > height - 150) { // Keep above input bar area roughly
+        obj.y = height - 150;
+        obj.vy = -obj.vy;
+      }
+    }
+
+    // 2. Object-Object Collision
+    // Simple O(N^2) check is fine for < 50 items
+    for (int i = 0; i < _physicsObjects.length; i++) {
+      for (int j = i + 1; j < _physicsObjects.length; j++) {
+        _resolveCollision(_physicsObjects[i], _physicsObjects[j]);
+      }
+    }
+
+    setState(() {}); // Trigger repaint of objects
+  }
+
+  void _resolveCollision(PhysicsCommentObject a, PhysicsCommentObject b) {
+    final dx = b.x - a.x;
+    final dy = b.y - a.y;
+    final distance = sqrt(dx*dx + dy*dy);
+    final minDistance = 80.0; // Assume diameter ~80
+
+    if (distance < minDistance) {
+      // Collision detected!
+      // Calculate normalized collision vector
+      final nx = dx / distance;
+      final ny = dy / distance;
+
+      // Swap velocity components along the normal (perfect elastic collision for equal mass)
+      // v' = v - 2 * (v . n) * n  <-- Reflection formula
+      // But simpler for equal mass 1D collision along normal is just swap.
+      // Let's do simple bounce separation first
+      
+      // Separate them to avoid sticking
+      final overlap = minDistance - distance;
+      final moveX = nx * overlap * 0.5;
+      final moveY = ny * overlap * 0.5;
+      
+      a.x -= moveX;
+      a.y -= moveY;
+      b.x += moveX;
+      b.y += moveY;
+
+      // Exchange momentum
+      // Approximate: Swap velocities? Or partial reflection?
+      // Let's add some "chaos" (random spin change on hit)
+      
+      final tempVx = a.vx;
+      final tempVy = a.vy;
+      a.vx = b.vx;
+      a.vy = b.vy;
+      b.vx = tempVx;
+      b.vy = tempVy;
+      
+      // Sparkle Spin
+      a.angularVelocity = (a.angularVelocity + (_random.nextDouble() - 0.5) * 0.1).clamp(-0.2, 0.2);
+      b.angularVelocity = (b.angularVelocity + (_random.nextDouble() - 0.5) * 0.1).clamp(-0.2, 0.2);
+    }
   }
 
   // --- Data Logic ---
   void _loadCommentsAndSubscribe() {
+    if (_currentStories.isEmpty) return;
     final storyId = _currentStories[_currentIndex].id;
     
-    // 1. Reset Comments for new story
-    setState(() {
-      _comments = [];
-    });
+    // Clear Physics World
+    _physicsObjects.clear();
 
-    // 2. Fetch Existing Comments (with Profiles)
+    // Fetch & Subscribe
     _fetchExistingComments(storyId);
-
-    // 3. Subscribe to New Comments
+    
     _subscription?.unsubscribe();
     _subscription = Supabase.instance.client
         .channel('public:story_replies:$storyId')
@@ -93,46 +192,28 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
     try {
       final response = await Supabase.instance.client
           .from('story_replies')
-          .select('*, profiles(*)') // Assuming FK is setup correctly or we might need manual fetch if not
+          .select('*, profiles(*)')
           .eq('story_id', storyId);
-          // Note: If 'profiles' relation isn't detected automatically, we'd need to manually join.
-          // Since we just created the table without explicit FK name in Dart side, let's hope Supabase infers it 
-          // or we simply fetch user info manually to be safe.
       
       final data = List<Map<String, dynamic>>.from(response);
-      
-      // If simple join fails, failover: fetch profiles manually? 
-      // Let's assume standard select for now. If user_id is FK to profiles.id, Supabase works well.
-      
+
       if (!mounted) return;
       
-      final List<CommentModel> loaded = [];
       for (var item in data) {
-         final profile = item['profiles'] ?? {}; // Might be null if join failed
-         loaded.add(
-           CommentModel(
+         final profile = item['profiles'] ?? {};
+         _spawnObject(
              id: item['id'],
              message: item['message'],
              username: profile['username'] ?? 'User',
-             avatarUrl: profile['avatar_url'],
-             // Random position for "Floating" effect (0.1 to 0.8 of screen w/h)
-             initialX: 0.1 + _random.nextDouble() * 0.7,
-             initialY: 0.1 + _random.nextDouble() * 0.6,
-           )
+             avatarUrl: profile['avatar_url']
          );
       }
-      
-      setState(() {
-        _comments = loaded;
-      });
-
     } catch (e) {
       debugPrint('Error fetching comments: $e');
     }
   }
 
   Future<void> _handleNewComment(Map<String, dynamic> record) async {
-    // We need to fetch the profile for this user to display avatar
     try {
        final userId = record['user_id'];
        final profileResponse = await Supabase.instance.client
@@ -143,22 +224,49 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
        
        if (!mounted) return;
        
-       final newComment = CommentModel(
+       _spawnObject(
          id: record['id'],
          message: record['message'],
          username: profileResponse['username'] ?? 'User',
          avatarUrl: profileResponse['avatar_url'],
-         initialX: 0.1 + _random.nextDouble() * 0.7,
-         initialY: 0.1 + _random.nextDouble() * 0.6,
        );
-
-       setState(() {
-         _comments.add(newComment);
-       });
        
     } catch (e) {
       debugPrint('Error handling new comment: $e');
     }
+  }
+  
+  void _spawnObject({required String id, required String message, required String username, String? avatarUrl}) {
+    if (_screenSize == null) return;
+    
+    // Random Start Position
+    final x = _random.nextDouble() * (_screenSize!.width - 100) + 50;
+    final y = _random.nextDouble() * (_screenSize!.height / 2) + 100;
+    
+    // Random Fast Velocity
+    final vx = (_random.nextDouble() - 0.5) * 4.0; // Speed factor
+    final vy = (_random.nextDouble() - 0.5) * 4.0;
+    
+    // Random Rotation
+    final angle = _random.nextDouble() * pi * 2;
+    final angularVelocity = (_random.nextDouble() - 0.5) * 0.05;
+
+    final obj = PhysicsCommentObject(
+      id: id,
+      message: message,
+      username: username,
+      avatarUrl: avatarUrl,
+      x: x,
+      y: y,
+      vx: vx,
+      vy: vy,
+      angle: angle,
+      angularVelocity: angularVelocity,
+    );
+    
+    setState(() {
+      _physicsObjects.add(obj);
+    });
   }
 
   Future<void> _sendReply() async {
@@ -168,8 +276,8 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
     _replyController.clear();
     _replyFocusNode.unfocus();
     
-    if (!_progressController.isAnimating) {
-        _progressController.forward();
+    if (!_storyProgressController.isAnimating) {
+        _storyProgressController.forward();
     }
 
     try {
@@ -181,8 +289,6 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
         'user_id': user.id,
         'message': text,
       });
-      // Logic above (_handleNewComment) will catch the Realtime event and add it to UI
-      // So we don't double add here manually.
       
     } catch (e) {
       debugPrint('Reply failed: $e');
@@ -194,8 +300,8 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
     if (_currentIndex < _currentStories.length - 1) {
       setState(() {
         _currentIndex++;
-        _progressController.reset();
-        _progressController.forward();
+        _storyProgressController.reset();
+        _storyProgressController.forward();
       });
       _loadCommentsAndSubscribe(); 
     } else {
@@ -207,18 +313,18 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
     if (_currentIndex > 0) {
       setState(() {
         _currentIndex--;
-        _progressController.reset();
-        _progressController.forward();
+        _storyProgressController.reset();
+        _storyProgressController.forward();
       });
       _loadCommentsAndSubscribe();
     } else {
-      _progressController.reset();
-      _progressController.forward();
+      _storyProgressController.reset();
+      _storyProgressController.forward();
     }
   }
-
+  
   Future<void> _deleteStory(Story story) async {
-    _progressController.stop();
+    _storyProgressController.stop();
     try {
       await Supabase.instance.client.from('stories').delete().eq('id', story.id);
       
@@ -231,8 +337,8 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
           if (_currentIndex >= _currentStories.length) {
             _currentIndex = _currentStories.length - 1;
           }
-          _progressController.reset();
-          _progressController.forward();
+          _storyProgressController.reset();
+          _storyProgressController.forward();
           _loadCommentsAndSubscribe();
         }
       });
@@ -243,19 +349,16 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
 
   @override
   void dispose() {
-    _progressController.dispose();
+    _physicsTicker?.dispose();
+    _storyProgressController.dispose();
     _replyController.dispose();
     _replyFocusNode.dispose();
     _subscription?.unsubscribe();
-    _nextStoryTimer?.cancel();
     super.dispose();
   }
-
+  
   String _timeAgo(DateTime dateTime) {
-    final diff = DateTime.now().difference(dateTime);
-    if (diff.inDays > 0) return '${diff.inDays}d';
-    if (diff.inHours > 0) return '${diff.inHours}h';
-    if (diff.inMinutes > 0) return '${diff.inMinutes}m';
+    // Simplified time ago
     return 'now';
   }
 
@@ -270,9 +373,9 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
       body: GestureDetector(
         onTapUp: (details) {
           if (_replyFocusNode.hasFocus) {
-            _replyFocusNode.unfocus();
-            _progressController.forward(); 
-            return;
+             _replyFocusNode.unfocus();
+             _storyProgressController.forward();
+             return;
           }
           final width = MediaQuery.of(context).size.width;
           if (details.globalPosition.dx < width / 3) {
@@ -283,26 +386,23 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
         },
         child: Stack(
           children: [
-            // 1. Image Layer
+            // 1. Image
             Positioned.fill(
-              child: Image.network(
-                story.imageUrl,
-                fit: BoxFit.contain,
-                loadingBuilder: (context, child, loadingProgress) {
-                   if (loadingProgress == null) return child;
-                   return const Center(child: CircularProgressIndicator(color: Colors.white));
-                },
-                errorBuilder: (context, error, stackTrace) => const Center(
-                   child: Icon(Icons.error, color: Colors.white),
-                ),
-              ),
+              child: Image.network(story.imageUrl, fit: BoxFit.contain),
             ),
 
-            // 2. Persistent Floating Comments Layer
-            ..._comments.map((c) => PersistentFloatingComment(key: ValueKey(c.id), model: c)).toList(),
+            // 2. Physics Objects
+            ..._physicsObjects.map((obj) => Positioned(
+               left: obj.x - 60, // Centers assuming ~120 width
+               top: obj.y - 25,  // Centers assuming ~50 height
+               child: Transform.rotate(
+                 angle: obj.angle,
+                 child: _buildGlassComment(obj),
+               ),
+            )).toList(),
 
             // 3. UI Overlay
-            Positioned(
+             Positioned(
               top: 40,
               left: 10,
               right: 10,
@@ -313,7 +413,7 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
                       padding: const EdgeInsets.symmetric(horizontal: 2),
                       child: LinearProgressIndicator(
                         value: entry.key == _currentIndex 
-                            ? _progressController.value 
+                            ? _storyProgressController.value 
                             : (entry.key < _currentIndex ? 1.0 : 0.0),
                         backgroundColor: Colors.white.withOpacity(0.3),
                         valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
@@ -323,105 +423,76 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
                 }).toList(),
               ),
             ),
-
+            
+             // Close Button
             Positioned(
               top: 55,
-              left: 16,
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundImage: story.avatarUrl != null ? NetworkImage(story.avatarUrl!) : null,
-                    backgroundColor: Colors.grey,
-                    child: story.avatarUrl == null ? const Icon(Icons.person, size: 16, color: Colors.white) : null,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    story.username ?? 'User',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _timeAgo(story.createdAt),
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                ],
+              right: 16,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => context.pop(_hasChanges),
               ),
             ),
             
-            // Delete Button
-            if (story.userId == Supabase.instance.client.auth.currentUser?.id)
+             if (story.userId == Supabase.instance.client.auth.currentUser?.id)
               Positioned(
                 top: 55,
-                right: 16, 
+                left: 16, // Moved to right for consistency or keep left if intended
                 child: IconButton(
                   icon: const Icon(Icons.delete, color: Colors.white),
                   onPressed: () => _deleteStory(story),
                 ),
               ),
 
-             // Close Button
-            Positioned(
-              top: 55,
-              right: story.userId == Supabase.instance.client.auth.currentUser?.id ? 56 : 16,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => context.pop(_hasChanges),
-              ),
-            ),
 
-            // 4. Glassmorphism Reply Input
+            // 4. Input
             Positioned(
               bottom: MediaQuery.of(context).viewInsets.bottom,
-              left: 0,
+              left: 0, 
               right: 0,
               child: ClipRRect(
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    color: Colors.black.withOpacity(0.2), // Darker glass
+                    color: Colors.black.withOpacity(0.2),
                     child: SafeArea(
-                      top: false,
-                      child: Row(
-                        children: [
-                           // Add an Avatar here for current user? Maybe later.
-                          Expanded(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(30),
-                                border: Border.all(color: Colors.white.withOpacity(0.2)),
-                              ),
-                              child: TextField(
-                                controller: _replyController,
-                                focusNode: _replyFocusNode,
-                                style: const TextStyle(color: Colors.white),
-                                decoration: const InputDecoration(
-                                  hintText: 'Send a floating message...',
-                                  hintStyle: TextStyle(color: Colors.white70),
-                                  border: InputBorder.none,
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                       top: false,
+                       child: Row(
+                         children: [
+                           Expanded(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(30),
+                                  border: Border.all(color: Colors.white.withOpacity(0.2)),
                                 ),
-                                onTap: () => _progressController.stop(), 
-                                onSubmitted: (_) => _sendReply(),
+                                child: TextField(
+                                  controller: _replyController,
+                                  focusNode: _replyFocusNode,
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: const InputDecoration(
+                                    hintText: 'Zero-G Message...',
+                                    hintStyle: TextStyle(color: Colors.white70),
+                                    border: InputBorder.none,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                  ),
+                                  onTap: () => _storyProgressController.stop(),
+                                  onSubmitted: (_) => _sendReply(),
+                                ),
+                              ),
+                           ),
+                           const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: _sendReply,
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                                child: const Icon(Icons.send_rounded, color: Colors.pink, size: 24),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          GestureDetector(
-                            onTap: _sendReply,
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white,
-                              ),
-                              child: const Icon(Icons.send_rounded, color: Colors.pink, size: 24),
-                            ),
-                          ),
-                        ],
-                      ),
+                         ],
+                       ),
                     ),
                   ),
                 ),
@@ -432,123 +503,66 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
       ),
     );
   }
-}
 
-// --- Helper Classes ---
-
-class CommentModel {
-  final String id;
-  final String message;
-  final String username;
-  final String? avatarUrl;
-  final double initialX; // Normalized 0..1
-  final double initialY; // Normalized 0..1
-  
-  CommentModel({
-    required this.id, 
-    required this.message, 
-    required this.username, 
-    this.avatarUrl,
-    required this.initialX,
-    required this.initialY,
-  });
-}
-
-class PersistentFloatingComment extends StatefulWidget {
-  final CommentModel model;
-  
-  const PersistentFloatingComment({super.key, required this.model});
-
-  @override
-  State<PersistentFloatingComment> createState() => _PersistentFloatingCommentState();
-}
-
-class _PersistentFloatingCommentState extends State<PersistentFloatingComment> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-  final double _driftRange = 20.0; // Amount of pixels to drift
-
-  @override
-  void initState() {
-    super.initState();
-    // Drifting Animation: Slow sine wave loop
-    _controller = AnimationController(
-       vsync: this,
-       duration: Duration(seconds: 3 + Random().nextInt(3)), // 3-6 seconds
-    )..repeat(reverse: true);
-    
-    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        final screenWidth = MediaQuery.of(context).size.width;
-        final screenHeight = MediaQuery.of(context).size.height;
-        
-        // Base Position
-        final baseX = widget.model.initialX * screenWidth;
-        final baseY = widget.model.initialY * screenHeight;
-        
-        // Add Drift
-        final dx = 0.0; // Keep horizontal steady for reading? Or slight drift
-        final dy = _animation.value * _driftRange; // Move up and down gently
-
-        return Positioned(
-          left: baseX + dx,
-          top: baseY + dy,
-          child: child!,
-        );
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(25),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2), // Requested Glass Style
-              borderRadius: BorderRadius.circular(25),
-              border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                 CircleAvatar(
-                   radius: 12,
-                   backgroundImage: widget.model.avatarUrl != null 
-                      ? NetworkImage(widget.model.avatarUrl!)
-                      : null,
-                   backgroundColor: Colors.white.withOpacity(0.3),
-                   child: widget.model.avatarUrl == null 
-                       ? const Icon(Icons.person, color: Colors.white, size: 14) 
-                       : null,
-                 ),
-                 const SizedBox(width: 8),
-                 Flexible(
-                   child: Text(
-                      widget.model.message,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 13,
-                        shadows: [Shadow(color: Colors.black26, blurRadius: 2)]
-                      ),
-                   ),
-                 ),
-              ],
-            ),
+  Widget _buildGlassComment(PhysicsCommentObject obj) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+               CircleAvatar(
+                 radius: 10,
+                 backgroundImage: obj.avatarUrl != null ? NetworkImage(obj.avatarUrl!) : null,
+                 backgroundColor: Colors.white.withOpacity(0.3),
+                 child: obj.avatarUrl == null ? const Icon(Icons.person, size: 12, color: Colors.white) : null,
+               ),
+               const SizedBox(width: 6),
+               Flexible(
+                  child: Text(
+                    obj.message,
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+               ),
+            ],
           ),
         ),
       ),
     );
   }
+}
+
+class PhysicsCommentObject {
+  final String id;
+  final String message;
+  final String username;
+  final String? avatarUrl;
+  
+  double x;
+  double y;
+  double vx; // X Velocity
+  double vy; // Y Velocity
+  double angle;
+  double angularVelocity;
+
+  PhysicsCommentObject({
+    required this.id,
+    required this.message,
+    required this.username,
+    this.avatarUrl,
+    required this.x,
+    required this.y,
+    required this.vx,
+    required this.vy,
+    required this.angle,
+    required this.angularVelocity,
+  });
 }
