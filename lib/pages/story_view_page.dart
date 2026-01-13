@@ -27,11 +27,13 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
   late List<Story> _currentStories;
   bool _hasChanges = false;
   
-  // Real-time Reply Logic
+  // Real-time & Comment Logic
   final TextEditingController _replyController = TextEditingController();
   final FocusNode _replyFocusNode = FocusNode();
   RealtimeChannel? _subscription;
-  final List<BubbleModel> _bubbles = [];
+  
+  // Using a Set or Map to prevent duplicates might be smart, but List is fine for now
+  List<CommentModel> _comments = [];
   final Random _random = Random();
 
   @override
@@ -40,7 +42,7 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
     _currentIndex = widget.initialIndex;
     _currentStories = List.from(widget.stories);
     _setupAnimation();
-    _subscribeToReplies();
+    _loadCommentsAndSubscribe();
   }
 
   void _setupAnimation() {
@@ -59,10 +61,19 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
     _progressController.forward();
   }
 
-  // --- Real-time Logic ---
-  void _subscribeToReplies() {
+  // --- Data Logic ---
+  void _loadCommentsAndSubscribe() {
     final storyId = _currentStories[_currentIndex].id;
     
+    // 1. Reset Comments for new story
+    setState(() {
+      _comments = [];
+    });
+
+    // 2. Fetch Existing Comments (with Profiles)
+    _fetchExistingComments(storyId);
+
+    // 3. Subscribe to New Comments
     _subscription?.unsubscribe();
     _subscription = Supabase.instance.client
         .channel('public:story_replies:$storyId')
@@ -72,32 +83,82 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
           table: 'story_replies',
           filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'story_id', value: storyId),
           callback: (payload) {
-             final message = payload.newRecord['message'] as String;
-             _addBubble(message);
+             _handleNewComment(payload.newRecord);
           },
         )
         .subscribe();
   }
 
-  void _addBubble(String message) {
-    if (!mounted) return;
-    
-    final id = DateTime.now().microsecondsSinceEpoch.toString();
-    // Random X start position (10% to 90% of screen width)
-    final startX = 20.0 + _random.nextDouble() * (MediaQuery.of(context).size.width - 100);
-
-    setState(() {
-      _bubbles.add(BubbleModel(id: id, message: message, startX: startX));
-    });
-
-    // Auto remove after animation duration (e.g. 4 seconds)
-    Future.delayed(const Duration(milliseconds: 4000), () {
-      if (mounted) {
-        setState(() {
-          _bubbles.removeWhere((b) => b.id == id);
-        });
+  Future<void> _fetchExistingComments(String storyId) async {
+    try {
+      final response = await Supabase.instance.client
+          .from('story_replies')
+          .select('*, profiles(*)') // Assuming FK is setup correctly or we might need manual fetch if not
+          .eq('story_id', storyId);
+          // Note: If 'profiles' relation isn't detected automatically, we'd need to manually join.
+          // Since we just created the table without explicit FK name in Dart side, let's hope Supabase infers it 
+          // or we simply fetch user info manually to be safe.
+      
+      final data = List<Map<String, dynamic>>.from(response);
+      
+      // If simple join fails, failover: fetch profiles manually? 
+      // Let's assume standard select for now. If user_id is FK to profiles.id, Supabase works well.
+      
+      if (!mounted) return;
+      
+      final List<CommentModel> loaded = [];
+      for (var item in data) {
+         final profile = item['profiles'] ?? {}; // Might be null if join failed
+         loaded.add(
+           CommentModel(
+             id: item['id'],
+             message: item['message'],
+             username: profile['username'] ?? 'User',
+             avatarUrl: profile['avatar_url'],
+             // Random position for "Floating" effect (0.1 to 0.8 of screen w/h)
+             initialX: 0.1 + _random.nextDouble() * 0.7,
+             initialY: 0.1 + _random.nextDouble() * 0.6,
+           )
+         );
       }
-    });
+      
+      setState(() {
+        _comments = loaded;
+      });
+
+    } catch (e) {
+      debugPrint('Error fetching comments: $e');
+    }
+  }
+
+  Future<void> _handleNewComment(Map<String, dynamic> record) async {
+    // We need to fetch the profile for this user to display avatar
+    try {
+       final userId = record['user_id'];
+       final profileResponse = await Supabase.instance.client
+           .from('profiles')
+           .select()
+           .eq('id', userId)
+           .single();
+       
+       if (!mounted) return;
+       
+       final newComment = CommentModel(
+         id: record['id'],
+         message: record['message'],
+         username: profileResponse['username'] ?? 'User',
+         avatarUrl: profileResponse['avatar_url'],
+         initialX: 0.1 + _random.nextDouble() * 0.7,
+         initialY: 0.1 + _random.nextDouble() * 0.6,
+       );
+
+       setState(() {
+         _comments.add(newComment);
+       });
+       
+    } catch (e) {
+      debugPrint('Error handling new comment: $e');
+    }
   }
 
   Future<void> _sendReply() async {
@@ -107,7 +168,6 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
     _replyController.clear();
     _replyFocusNode.unfocus();
     
-    // Resume timer if paused by focus
     if (!_progressController.isAnimating) {
         _progressController.forward();
     }
@@ -116,18 +176,13 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
       final story = _currentStories[_currentIndex];
       final user = Supabase.instance.client.auth.currentUser!;
       
-      // Optimistic Update (Show my bubble immediately)
-      // Note: Realtime might echo this back, handling dupes is hard without IDs, 
-      // but simpler to just show it via realtime callback if latency is low.
-      // However, for "instant" feel, we trigger locally. 
-      // Ideally, the realtime callback handles it. We'll rely on realtime for "everyone sees it", 
-      // including me. But to be safe vs latency, let's just insert.
-      
       await Supabase.instance.client.from('story_replies').insert({
         'story_id': story.id,
         'user_id': user.id,
         'message': text,
       });
+      // Logic above (_handleNewComment) will catch the Realtime event and add it to UI
+      // So we don't double add here manually.
       
     } catch (e) {
       debugPrint('Reply failed: $e');
@@ -142,7 +197,7 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
         _progressController.reset();
         _progressController.forward();
       });
-      _subscribeToReplies(); // Resubscribe for new story
+      _loadCommentsAndSubscribe(); 
     } else {
       context.pop(_hasChanges); 
     }
@@ -155,7 +210,7 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
         _progressController.reset();
         _progressController.forward();
       });
-      _subscribeToReplies();
+      _loadCommentsAndSubscribe();
     } else {
       _progressController.reset();
       _progressController.forward();
@@ -178,7 +233,7 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
           }
           _progressController.reset();
           _progressController.forward();
-          _subscribeToReplies();
+          _loadCommentsAndSubscribe();
         }
       });
     } catch (e) {
@@ -211,16 +266,14 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
 
     return Scaffold(
       backgroundColor: Colors.black,
-      resizeToAvoidBottomInset: false, // Handle keyboard manually or allow overlay
+      resizeToAvoidBottomInset: false, 
       body: GestureDetector(
         onTapUp: (details) {
-          // If keyboard is open, close it on tap
           if (_replyFocusNode.hasFocus) {
             _replyFocusNode.unfocus();
-            _progressController.forward(); // Resume
+            _progressController.forward(); 
             return;
           }
-          
           final width = MediaQuery.of(context).size.width;
           if (details.globalPosition.dx < width / 3) {
             _previousStory();
@@ -237,33 +290,18 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
                 fit: BoxFit.contain,
                 loadingBuilder: (context, child, loadingProgress) {
                    if (loadingProgress == null) return child;
-                   return const Center(
-                     child: CircularProgressIndicator(color: Colors.white),
-                   );
+                   return const Center(child: CircularProgressIndicator(color: Colors.white));
                 },
-                errorBuilder: (context, error, stackTrace) {
-                   return Center(
-                     child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error, color: Colors.white, size: 40),
-                          if (error.toString().contains('404'))
-                             const Text('404 Not Found', style: TextStyle(color: Colors.red))
-                          else if (error.toString().contains('403'))
-                             const Text('403 Forbidden', style: TextStyle(color: Colors.red))
-                          else
-                             const Text('Error Loading Image', style: TextStyle(color: Colors.red)),
-                        ],
-                     ),
-                   );
-                },
+                errorBuilder: (context, error, stackTrace) => const Center(
+                   child: Icon(Icons.error, color: Colors.white),
+                ),
               ),
             ),
 
-            // 2. Floating Bubbles Layer
-            ..._bubbles.map((b) => FloatingBubbleWidget(model: b)).toList(),
+            // 2. Persistent Floating Comments Layer
+            ..._comments.map((c) => PersistentFloatingComment(key: ValueKey(c.id), model: c)).toList(),
 
-            // 3. UI Overlay (Progress, User Info, Buttons)
+            // 3. UI Overlay
             Positioned(
               top: 40,
               left: 10,
@@ -315,26 +353,26 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
             if (story.userId == Supabase.instance.client.auth.currentUser?.id)
               Positioned(
                 top: 55,
-                right: 16, // Moved to right for consistency or keep left if intended
+                right: 16, 
                 child: IconButton(
                   icon: const Icon(Icons.delete, color: Colors.white),
                   onPressed: () => _deleteStory(story),
                 ),
               ),
 
-             // Close Button (Top Right)
+             // Close Button
             Positioned(
               top: 55,
-              right: story.userId == Supabase.instance.client.auth.currentUser?.id ? 56 : 16, // Adjust if delete btn exists
+              right: story.userId == Supabase.instance.client.auth.currentUser?.id ? 56 : 16,
               child: IconButton(
                 icon: const Icon(Icons.close, color: Colors.white),
                 onPressed: () => context.pop(_hasChanges),
               ),
             ),
 
-            // 4. Glassmorphism Reply Input (Bottom)
+            // 4. Glassmorphism Reply Input
             Positioned(
-              bottom: MediaQuery.of(context).viewInsets.bottom, // Move up with keyboard
+              bottom: MediaQuery.of(context).viewInsets.bottom,
               left: 0,
               right: 0,
               child: ClipRRect(
@@ -342,29 +380,30 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
                   filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withOpacity(0.2), // Darker glass
                     child: SafeArea(
                       top: false,
                       child: Row(
                         children: [
+                           // Add an Avatar here for current user? Maybe later.
                           Expanded(
                             child: Container(
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
+                                color: Colors.white.withOpacity(0.15),
                                 borderRadius: BorderRadius.circular(30),
-                                border: Border.all(color: Colors.white.withOpacity(0.3)),
+                                border: Border.all(color: Colors.white.withOpacity(0.2)),
                               ),
                               child: TextField(
                                 controller: _replyController,
                                 focusNode: _replyFocusNode,
                                 style: const TextStyle(color: Colors.white),
                                 decoration: const InputDecoration(
-                                  hintText: 'Send a reply...',
+                                  hintText: 'Send a floating message...',
                                   hintStyle: TextStyle(color: Colors.white70),
                                   border: InputBorder.none,
                                   contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                                 ),
-                                onTap: () => _progressController.stop(), // Pause story when typing
+                                onTap: () => _progressController.stop(), 
                                 onSubmitted: (_) => _sendReply(),
                               ),
                             ),
@@ -397,40 +436,48 @@ class _StoryViewPageState extends State<StoryViewPage> with TickerProviderStateM
 
 // --- Helper Classes ---
 
-class BubbleModel {
+class CommentModel {
   final String id;
   final String message;
-  final double startX;
+  final String username;
+  final String? avatarUrl;
+  final double initialX; // Normalized 0..1
+  final double initialY; // Normalized 0..1
   
-  BubbleModel({required this.id, required this.message, required this.startX});
+  CommentModel({
+    required this.id, 
+    required this.message, 
+    required this.username, 
+    this.avatarUrl,
+    required this.initialX,
+    required this.initialY,
+  });
 }
 
-class FloatingBubbleWidget extends StatefulWidget {
-  final BubbleModel model;
+class PersistentFloatingComment extends StatefulWidget {
+  final CommentModel model;
   
-  const FloatingBubbleWidget({super.key, required this.model});
+  const PersistentFloatingComment({super.key, required this.model});
 
   @override
-  State<FloatingBubbleWidget> createState() => _FloatingBubbleWidgetState();
+  State<PersistentFloatingComment> createState() => _PersistentFloatingCommentState();
 }
 
-class _FloatingBubbleWidgetState extends State<FloatingBubbleWidget> with SingleTickerProviderStateMixin {
+class _PersistentFloatingCommentState extends State<PersistentFloatingComment> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
+  final double _driftRange = 20.0; // Amount of pixels to drift
 
   @override
   void initState() {
     super.initState();
+    // Drifting Animation: Slow sine wave loop
     _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4), // Float duration
-    );
+       vsync: this,
+       duration: Duration(seconds: 3 + Random().nextInt(3)), // 3-6 seconds
+    )..repeat(reverse: true);
     
-    _animation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
-
-    _controller.forward();
+    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
   }
 
   @override
@@ -444,58 +491,59 @@ class _FloatingBubbleWidgetState extends State<FloatingBubbleWidget> with Single
     return AnimatedBuilder(
       animation: _animation,
       builder: (context, child) {
-        // Calculate Position: Bottom -> Top
-        // Start from bottom 100px up to top 100px
+        final screenWidth = MediaQuery.of(context).size.width;
         final screenHeight = MediaQuery.of(context).size.height;
-        final bottomOffset = 150.0; 
-        final moveRange = screenHeight * 0.6;
         
-        final currentBottom = bottomOffset + (moveRange * _animation.value);
-        final opacity = 1.0 - _animation.value; // Fade out as it goes up
+        // Base Position
+        final baseX = widget.model.initialX * screenWidth;
+        final baseY = widget.model.initialY * screenHeight;
+        
+        // Add Drift
+        final dx = 0.0; // Keep horizontal steady for reading? Or slight drift
+        final dy = _animation.value * _driftRange; // Move up and down gently
 
         return Positioned(
-          bottom: currentBottom,
-          left: widget.model.startX,
-          child: Opacity(
-            opacity: opacity,
-            child: Transform.scale(
-              scale: 0.5 + (_animation.value * 0.5), // Grow slightly or shrink? Let's stay steady or pop in
-              child: child,
-            ),
-          ),
+          left: baseX + dx,
+          top: baseY + dy,
+          child: child!,
         );
       },
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(25),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.4)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.pink.withOpacity(0.2),
-                  blurRadius: 10,
-                  spreadRadius: 2,
-                )
-              ]
+              color: Colors.white.withOpacity(0.2), // Requested Glass Style
+              borderRadius: BorderRadius.circular(25),
+              border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.cloud, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  widget.model.message,
-                  style: const TextStyle(
-                    color: Colors.white, 
-                    fontWeight: FontWeight.bold,
-                    shadows: [Shadow(color: Colors.black26, blurRadius: 4)]
-                  ),
-                ),
+                 CircleAvatar(
+                   radius: 12,
+                   backgroundImage: widget.model.avatarUrl != null 
+                      ? NetworkImage(widget.model.avatarUrl!)
+                      : null,
+                   backgroundColor: Colors.white.withOpacity(0.3),
+                   child: widget.model.avatarUrl == null 
+                       ? const Icon(Icons.person, color: Colors.white, size: 14) 
+                       : null,
+                 ),
+                 const SizedBox(width: 8),
+                 Flexible(
+                   child: Text(
+                      widget.model.message,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                        shadows: [Shadow(color: Colors.black26, blurRadius: 2)]
+                      ),
+                   ),
+                 ),
               ],
             ),
           ),
