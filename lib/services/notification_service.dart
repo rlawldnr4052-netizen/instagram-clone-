@@ -20,13 +20,15 @@ class NotificationService {
     );
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      debugPrint('User granted permission');
+      debugPrint('[FCM_READY] Permission Granted');
       
       // 2. Get Token
       final token = await _messaging.getToken();
       if (token != null) {
-        debugPrint('FCM Token: $token');
+        debugPrint('[FCM_READY] Token: $token');
         await _saveTokenToSupabase(token);
+      } else {
+        debugPrint('[FCM_ERROR] Token is null');
       }
       
       // 3. Listen for Foreground Messages
@@ -39,9 +41,43 @@ class NotificationService {
           _showGlassOverlay(context, message.notification!.title, message.notification!.body);
         }
       });
+      
+      // 4. Check if token is actually in DB (Verification)
+      _verifyTokenInDb(token);
 
     } else {
-      debugPrint('User declined or has not accepted permission');
+      debugPrint('[FCM_ERROR] Permission Denied or Not Accepted: ${settings.authorizationStatus}');
+      // Show snackbar instructing to enable
+      if (context.mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(
+             content: const Text('알림을 켜야 서비스를 제대로 이용할 수 있습니다'),
+             action: SnackBarAction(label: '설정', onPressed: () {
+               // Future: open settings
+             }),
+           ),
+         );
+      }
+    }
+  }
+
+  Future<void> _verifyTokenInDb(String? currentToken) async {
+    if (currentToken == null) return;
+    try {
+       final user = Supabase.instance.client.auth.currentUser;
+       if (user == null) return;
+       final data = await Supabase.instance.client
+           .from('profiles')
+           .select('fcm_token')
+           .eq('id', user.id)
+           .maybeSingle();
+       
+       if (data == null || data['fcm_token'] != currentToken) {
+         debugPrint('Token mismatch or missing in DB. Updating...');
+         await _saveTokenToSupabase(currentToken);
+       }
+    } catch (e) {
+      debugPrint('Error verifying token: $e');
     }
   }
 
