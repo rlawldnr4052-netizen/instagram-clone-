@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:instagram_clone/firebase_options.dart';
+import 'package:instagram_clone/services/notification_service.dart';
+
 import 'package:instagram_clone/pages/login_page.dart';
 import 'package:instagram_clone/pages/signup_page.dart';
 import 'package:instagram_clone/pages/main_page.dart';
@@ -13,8 +17,7 @@ import 'package:instagram_clone/pages/profile_setup_page.dart';
 import 'package:instagram_clone/pages/profile_page.dart';
 import 'package:instagram_clone/pages/chat_page.dart';
 import 'package:instagram_clone/pages/direct_messages_page.dart';
-import 'package:instagram_clone/pages/activity_page.dart'; // Import
-
+import 'package:instagram_clone/pages/activity_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +27,15 @@ void main() async {
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1bXN1YWl5YnF2Z2N3aHJzenJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NTg2ODQsImV4cCI6MjA4MzUzNDY4NH0.0zEUuSszizgpEbz_mzUz_HLfaWmCEOZlXz5up2JHlHA',
   );
+  
+  try {
+    // Expect user to have configured this using CLI or manual file
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('Firebase Initialization Error: $e');
+  }
 
   runApp(const ProviderScope(child: MyApp()));
 }
@@ -51,7 +63,6 @@ final _router = GoRouter(
       name: 'activity',
       builder: (context, state) => const ActivityPage(),
     ),
-// ...
     GoRoute(
       path: '/direct',
       name: 'direct',
@@ -94,10 +105,6 @@ final _router = GoRouter(
         return ChatPage(otherUserId: userId);
       },
     ),
-    GoRoute(
-      path: '/direct',
-      builder: (context, state) => const DirectMessagesPage(),
-    ),
   ],
   redirect: (context, state) async {
     final session = supabase.auth.currentSession;
@@ -105,14 +112,11 @@ final _router = GoRouter(
     final isLoggingIn = location == '/login' || location == '/signup';
     final isSetupPage = location == '/setup-profile';
 
-    // 1. Not Logged In -> Force Login
     if (session == null) {
       if (!isLoggingIn) return '/login';
       return null;
     }
 
-    // 2. Logged In -> Strict Profile Check
-    // We query the DB every time for safety. 
     try {
       final profile = await supabase
           .from('profiles')
@@ -122,7 +126,6 @@ final _router = GoRouter(
 
       final username = profile?['username'] as String?;
       
-      // Strict Validation Rules
       final isInvalid = 
           username == null || 
           username.isEmpty || 
@@ -130,38 +133,39 @@ final _router = GoRouter(
           username == 'unknown';
 
       if (isInvalid) {
-        // If profile is invalid, absolutely NO access to anything else
         if (!isSetupPage) return '/setup-profile';
-        return null; // Stay on setup page
+        return null; 
       }
 
-      // 3. Profile Valid
-      // If user is trying to go to setup page but is already valid, send to feed
       if (isSetupPage || isLoggingIn) return '/feed';
-
-      // Allow access to requested page
       return null;
 
     } catch (e) {
       debugPrint('Redirect Error: $e');
-      // On error (e.g. network), ideally show error or retry.
-      // To prevent "open access" on error, we can default to staying put or setup.
-      // But for usability, if network fails, we might just let them be or retry.
-      // Let's enforce safety: if we can't verify, don't let them in.
-      // However, to avoid blocking offline usage (not implemented yet), 
-      // providing a fallback is tricky.
-      // For this user: "Strictly Block".
       if (!isSetupPage) return '/setup-profile'; 
-      // Explicitly allow direct messages
       if (location.startsWith('/direct')) return null;
-
       return null;
     }
   },
 );
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  
+  @override
+  void initState() {
+    super.initState();
+    // Initialize Notification Logic
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService().initialize(context);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
